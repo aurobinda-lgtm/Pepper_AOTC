@@ -1,0 +1,34 @@
+{
+  "source": "ClickUp · MUWCI · Overview",
+  "listId": "901614936605",
+  "syncedAt": "2026-06-22T09:30:00+05:30",
+  "updates": {},
+  "newTasks": [
+    {
+      "id": "muwci-content-cal",
+      "clickupId": "86d2zwn66",
+      "name": "Content Calendar for MUWCI",
+      "project": "MUWCI",
+      "status": "in_progress",
+      "owner": "Caryn Putman",
+      "targetDate": "2026-07-12",
+      "risk": "",
+      "health": "green",
+      "priority": "P2",
+      "blocked": false
+    },
+    {
+      "id": "muwci-cms",
+      "clickupId": "86d2zwn9b",
+      "name": "CMS Selection",
+      "project": "MUWCI",
+      "status": "in_progress",
+      "owner": "Jyoti / Caryn / Indranil",
+      "targetDate": "2026-05-22",
+      "risk": "Overdue — vendor decision pending",
+      "health": "yellow",
+      "priority": "P1",
+      "blocked": false
+    }
+  ]
+}
