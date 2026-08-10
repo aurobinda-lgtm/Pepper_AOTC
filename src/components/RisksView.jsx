@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { INK, SURFACE, PANEL, GRAY, GRAY2, LINE, OK, OK_BG, WARN, WARN_BG, RISK, RISK_BG, ff, mono } from "../brand/tokens.js";
-import { BLOCKERS, RISKS, BUGS, BUG_TREND } from "../data/pm_seed.js";
+import { useBlockers, useRisks, useBugs, useBugTrend, resolveBlocker, resolveBug } from "../lib/queries.js";
 
 const PROB_COLOR  = { high:RISK, medium:WARN, low:GRAY2 };
 const IMPACT_COLOR= { high:RISK, medium:WARN, low:OK   };
@@ -11,6 +11,13 @@ export default function RisksView({ addToast, mobile, tablet }) {
   const [resolvedBugs, setRB]   = useState(new Set());
   const [resolvedBlk,  setRBl]  = useState(new Set());
 
+  const { data: blockersData, refetch: refetchBlockers } = useBlockers();
+  const BLOCKERS = blockersData ?? [];
+  const RISKS = useRisks().data ?? [];
+  const { data: bugsData, refetch: refetchBugs } = useBugs();
+  const BUGS = bugsData ?? [];
+  const BUG_TREND = useBugTrend().data ?? [];
+
   const openBugs     = BUGS.filter(b => b.status !== "resolved" && !resolvedBugs.has(b.id));
   const p0 = openBugs.filter(b=>b.priority==="P0");
   const p1 = openBugs.filter(b=>b.priority==="P1");
@@ -18,6 +25,20 @@ export default function RisksView({ addToast, mobile, tablet }) {
   const p3 = openBugs.filter(b=>b.priority==="P3");
 
   const openBlockers = BLOCKERS.filter(b => b.status !== "resolved" && !resolvedBlk.has(b.id));
+
+  const handleResolveBlocker = async (b) => {
+    setRBl(s=>{const n=new Set(s);n.add(b.id);return n;});
+    addToast(`Blocker resolved: "${b.title}"`);
+    await resolveBlocker(b.id);
+    refetchBlockers();
+  };
+
+  const handleResolveBug = async (b) => {
+    setRB(s=>{const n=new Set(s);n.add(b.id);return n;});
+    addToast(`Bug resolved: "${b.title}"`);
+    await resolveBug(b.id);
+    refetchBugs();
+  };
 
   return (
     <div>
@@ -62,7 +83,7 @@ export default function RisksView({ addToast, mobile, tablet }) {
                       <span style={{ fontSize:10, fontWeight:800, background:RISK_BG, color:RISK,
                                      padding:"2px 8px", borderRadius:5 }}>ESCALATED</span>
                     )}
-                    <button onClick={() => { setRBl(s=>{const n=new Set(s);n.add(b.id);return n;}); addToast(`Blocker resolved: "${b.title}"`); }}
+                    <button onClick={() => handleResolveBlocker(b)}
                       style={{ fontSize:12, fontWeight:700, padding:"5px 14px", borderRadius:10,
                                border:`1.5px solid ${LINE}`, background:SURFACE, color:GRAY2,
                                cursor:"pointer", fontFamily:ff }}>Resolve</button>
@@ -155,7 +176,7 @@ export default function RisksView({ addToast, mobile, tablet }) {
                   <span style={{ fontSize:12, color:GRAY2 }}>{b.project}</span>
                   <span style={{ fontSize:12, color:GRAY2 }}>{b.assignee}</span>
                   <span style={{ fontSize:12, fontFamily:mono, color:b.openedDays>7?RISK:GRAY2 }}>{b.openedDays}d</span>
-                  <button onClick={()=>{ setRB(s=>{const n=new Set(s);n.add(b.id);return n;}); addToast(`Bug resolved: "${b.title}"`); }}
+                  <button onClick={()=>handleResolveBug(b)}
                     style={{ fontSize:11, padding:"4px 10px", borderRadius:8,
                              border:`1px solid ${LINE}`, background:SURFACE, color:GRAY2,
                              cursor:"pointer", fontFamily:ff }}>Resolve</button>

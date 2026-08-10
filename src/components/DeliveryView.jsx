@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { INK, SURFACE, PANEL, GRAY, GRAY2, LINE, OK, OK_BG, WARN, WARN_BG, RISK, RISK_BG, ff, mono } from "../brand/tokens.js";
-import { FEATURES, RELEASES, CURRENT_SPRINT } from "../data/pm_seed.js";
+import { useFeatures, useReleases, useCurrentSprint } from "../lib/queries.js";
 
 const STATUS_META = {
   completed:   { label:"Done",        color:OK,   bg:OK_BG   },
@@ -12,10 +12,16 @@ const STATUS_META = {
 const PRIORITY_COLOR = { P0:RISK, P1:WARN, P2:GRAY2, P3:GRAY };
 const HEALTH_COLOR   = { green:OK, yellow:WARN, red:RISK };
 
+const EMPTY_SPRINT = { name:"", startDate:"", endDate:"", velocity:null, items:[] };
+
 export default function DeliveryView({ addToast, mobile, tablet }) {
   const [tab, setTab]           = useState("roadmap"); // roadmap | sprint | releases
   const [filterStatus, setFS]   = useState("all");
   const [filterProject, setFP]  = useState("all");
+
+  const FEATURES      = useFeatures().data ?? [];
+  const RELEASES      = useReleases().data ?? [];
+  const CURRENT_SPRINT = useCurrentSprint().data ?? EMPTY_SPRINT;
 
   const projects = ["all", ...new Set(FEATURES.map(f => f.project))];
   const statuses = ["all", "in_progress", "delayed", "blocked", "not_started", "completed"];
@@ -24,10 +30,6 @@ export default function DeliveryView({ addToast, mobile, tablet }) {
     (filterStatus  === "all" || f.status  === filterStatus ) &&
     (filterProject === "all" || f.project === filterProject)
   );
-
-  const rel = RELEASES[0];
-  const checkDone = Object.values(rel.deployChecklist).filter(Boolean).length;
-  const checkTotal= Object.keys(rel.deployChecklist).length;
 
   const CHECKLIST_LABEL = {
     infraReady:"Infra ready", featureFlags:"Feature flags configured",

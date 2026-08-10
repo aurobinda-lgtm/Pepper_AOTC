@@ -1,13 +1,23 @@
 import { useState, useRef, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { SYNC_MODE, pullRoadmap, pushUpdate } from "../lib/clickupSync.js";
 import Celebration from "./Celebration.jsx";
-import { INK, SURFACE, PANEL, GRAY, GRAY2, LINE, OK, OK_BG, WARN, WARN_BG, RISK, RISK_BG, BLUE, ff, mono } from "../brand/tokens.js";
+import TaskDetailExtras from "./TaskDetailExtras.jsx";
+import BoardView from "./BoardView.jsx";
+import { getProfile } from "../lib/session.js";
+import { scopeByProject, ALL_PROJECTS } from "../lib/access.js";
+import { getScopeProjects } from "../lib/localDirectory.js";
+import { awardPoints } from "../lib/gamification.js";
+import AddTaskForm from "./AddTaskForm.jsx";
+import { INK, SURFACE, PANEL, GRAY, GRAY2, LINE, OK, OK_BG, WARN, WARN_BG, RISK, RISK_BG, ff, mono } from "../brand/tokens.js";
 import {
-  FEATURES, RELEASES, CURRENT_SPRINT,
-  BLOCKERS, RISKS, BUGS, BUG_TREND,
-  TEAM_CAPACITY, DECISIONS, HEALTH_MATRIX,
-} from "../data/pm_seed.js";
+  useFeatures, useReleases, useCurrentSprint,
+  useBlockers, useRisks, useBugs, useBugTrend,
+  useTeamCapacity, useDecisions, useHealthMatrix,
+  updateTask, updateRelease, updateSprintItem, resolveBlocker, resolveBug, closeDecision, setRiskMitigated,
+} from "../lib/queries.js";
+
+const EMPTY_SPRINT = { name:"", startDate:"", endDate:"", velocity:null, items:[] };
+const TODAY0 = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
 
 /* ── shared meta ── */
 const STATUS_META = {
@@ -82,7 +92,7 @@ function LoadBar({ load }) {
   );
 }
 
-export default function OperationsView({ addToast, mobile, tablet }) {
+export default function OperationsView({ addToast, mobile, tablet, user }) {
   /* ── interactive state preserved from all three views ── */
   const [filterStatus, setFS]  = useState("all");
   const [filterProject, setFP] = useState("all");
@@ -94,36 +104,58 @@ export default function OperationsView({ addToast, mobile, tablet }) {
   const [risksDone,    setRisksDone] = useState(new Set());
   const [bugFilter,    setBugFilter] = useState(null);    // null | "P0".."P3"
   const [openFeat,     setOpenFeat] = useState(null);
+  const [roadmapView,  setRoadmapView] = useState("table"); // "table" | "board"
   const [featEdits,    setFeatEdits] = useState({});   // id → partial field overrides
   const [editingFeat,  setEditingFeat] = useState(null);
   const toggleFeat = (id) => { setOpenFeat(o => o === id ? null : id); setEditingFeat(null); };
   const patchFeat  = (id, patch) => setFeatEdits(o => ({ ...o, [id]: { ...(o[id]||{}), ...patch } }));
 
-  /* ── ClickUp sync ── */
-  const [sync,    setSync]    = useState({ updates:{}, newTasks:[], syncedAt:null, source:"ClickUp" });
-  const [syncing, setSyncing] = useState(false);
-  const knownIds = useRef(new Set(FEATURES.map(f => f.clickupId)));
+  const [currentProfile, setCurrentProfile] = useState(null);
+  useEffect(() => { getProfile().then(setCurrentProfile); }, []);
 
-  const runSync = async (announce) => {
-    setSyncing(true);
-    const data = await pullRoadmap();
-    setSyncing(false);
-    if (!data) return;
-    const fresh = (data.newTasks || []).filter(t => !knownIds.current.has(t.clickupId));
-    fresh.forEach(t => knownIds.current.add(t.clickupId));
-    setSync({ updates:data.updates||{}, newTasks:data.newTasks||[],
-              syncedAt:data.syncedAt || new Date().toISOString(), source:data.source || "ClickUp" });
-    if (announce && fresh.length)
-      addToast(`🔄 ${fresh.length} new task${fresh.length>1?"s":""} synced from ClickUp`);
+  /* ── live data, scoped to the signed-in user's space (PM sees everything) ── */
+  const { data: featuresData, refetch: refetchFeatures } = useFeatures();
+  const FEATURES = scopeByProject(user, featuresData ?? []);
+  const RELEASES = scopeByProject(user, useReleases().data ?? []);
+  const { data: sprintData, refetch: refetchSprint } = useCurrentSprint();
+  const sprintRaw = sprintData ?? EMPTY_SPRINT;
+  const CURRENT_SPRINT = { ...sprintRaw, items: scopeByProject(user, sprintRaw.items) };
+  // a task can be created from Roadmap, Bugs, or Sprint — since they all read
+  // the same `tasks` table, refresh everything so it shows up wherever it's relevant
+  const [boardKey, setBoardKey] = useState(0);
+  const refreshAllTaskViews = () => {
+    setBoardKey(k => k + 1); // remounts the embedded Board, forcing it to refetch
+    refetchFeatures();
+    refetchBugs();
+    refetchSprint();
   };
+  const projectOptions = getScopeProjects(user) ?? ALL_PROJECTS;
+  const { data: blockersData, refetch: refetchBlockers } = useBlockers();
+  const BLOCKERS = scopeByProject(user, blockersData ?? []);
+  const { data: risksData, refetch: refetchRisks } = useRisks();
+  const RISKS = scopeByProject(user, risksData ?? []);
+  const { data: bugsData, refetch: refetchBugs } = useBugs();
+  const BUGS = scopeByProject(user, bugsData ?? []);
+  const BUG_TREND = useBugTrend().data ?? []; // company-wide trend, not project-scoped
+  const TEAM_CAPACITY = useTeamCapacity().data ?? []; // workload overview, left visible to all for now
+  const { data: decisionsData, refetch: refetchDecisions } = useDecisions();
+  const DECISIONS = scopeByProject(user, decisionsData ?? []);
+  const HEALTH_MATRIX = useHealthMatrix().data ?? []; // company-wide health snapshot
 
-  // initial pull + poll every 30s for tasks added/changed in ClickUp
-  useEffect(() => {
-    runSync(false);
-    const iv = setInterval(() => runSync(true), 30000);
-    return () => clearInterval(iv);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // push a feature edit to the database, with toast feedback
+  const saveFeature = async (id, patch, name) => {
+    const dbPatch = {};
+    if ("owner" in patch) dbPatch.owner_label = patch.owner;
+    if ("targetDate" in patch) dbPatch.target_date = patch.targetDate;
+    if ("status" in patch) dbPatch.status = patch.status;
+    if ("priority" in patch) dbPatch.priority = patch.priority;
+    if ("health" in patch) dbPatch.health = patch.health;
+    if ("blocked" in patch) dbPatch.blocked = patch.blocked;
+    if ("risk" in patch) dbPatch.risk_note = patch.risk;
+    addToast(`⤴ Saving "${name}"…`);
+    await updateTask(id, dbPatch);
+    addToast(`✓ "${name}" updated`);
+  };
 
   // 🎉 celebration when a task is completed on time
   const [celebrate, setCelebrate] = useState(false);
@@ -135,12 +167,11 @@ export default function OperationsView({ addToast, mobile, tablet }) {
   };
   const onTime = (dueDate) => !dueDate || new Date(dueDate) >= TODAY0;
 
-  // push an edit toward ClickUp, with toast feedback
-  const syncPush = async (clickupId, patch, name) => {
-    if (!clickupId || !patch || Object.keys(patch).length === 0) return;
-    addToast(`⤴ Syncing "${name}" to ClickUp…`);
-    await pushUpdate(clickupId, patch);
-    addToast(`✓ "${name}" updated on ClickUp`);
+  // 🏆 gamification — awards points/streak, surfaces via toast + badge unlock toasts
+  const awardAndNotify = (action, meta) => {
+    const { pointsAwarded, newBadges } = awardPoints(user?.email, action, meta);
+    if (pointsAwarded > 0) addToast(`⭐ +${pointsAwarded} pts`);
+    newBadges.forEach(b => addToast(`${b.icon} New badge unlocked: ${b.label}!`));
   };
 
   /* ── section refs for jump-nav ── */
@@ -156,12 +187,7 @@ export default function OperationsView({ addToast, mobile, tablet }) {
   const jumpTo = (k) => refs[k].current?.scrollIntoView({ behavior:"smooth", block:"start" });
 
   /* ── derived ── */
-  // roadmap = seed features (with any ClickUp field updates) + tasks newly pulled from ClickUp
-  const seedIds  = useRef(new Set(FEATURES.map(f => f.clickupId)));
-  const roadmap  = [
-    ...FEATURES.map(f => ({ ...f, ...(sync.updates[f.clickupId] || {}) })),
-    ...sync.newTasks.map(t => ({ ...t, _fromClickup: !seedIds.current.has(t.clickupId) })),
-  ];
+  const roadmap  = FEATURES;
   const projects = ["all", ...new Set(roadmap.map(f => f.project))];
   const statuses = ["all", "in_progress", "delayed", "blocked", "not_started", "completed"];
   const visible  = roadmap.filter(f =>
@@ -169,7 +195,7 @@ export default function OperationsView({ addToast, mobile, tablet }) {
     (filterProject === "all" || f.project === filterProject)
   );
   const sprintDone = CURRENT_SPRINT.items.filter(i=>i.status==="done").length;
-  const sprintPct  = Math.round(sprintDone / CURRENT_SPRINT.items.length * 100);
+  const sprintPct  = CURRENT_SPRINT.items.length ? Math.round(sprintDone / CURRENT_SPRINT.items.length * 100) : 0;
 
   const openBugs     = BUGS.filter(b => b.status !== "resolved" && !resolvedBugs.has(b.id));
   const p0 = openBugs.filter(b=>b.priority==="P0");
@@ -180,11 +206,44 @@ export default function OperationsView({ addToast, mobile, tablet }) {
   const pendingDec   = DECISIONS.filter(d => !decDone.has(d.id));
   const overloaded   = TEAM_CAPACITY.filter(t => t.load > 100);
 
+  /* ── "Today" priority card — top 3 things needing action, no scrolling required ── */
+  const roadmapWithEdits = roadmap.map(f => ({ ...f, ...(featEdits[f.id]||{}) }));
+  const todayItems = [
+    ...roadmapWithEdits
+      .filter(f => f.status !== "completed" && (f.blocked || (f.targetDate && new Date(f.targetDate) < TODAY0)))
+      .map(f => ({ kind:"feature", id:f.id, title:f.name, sub:f.project,
+                   urgency: (f.blocked ? 10000 : 0) + (f.targetDate ? (TODAY0 - new Date(f.targetDate))/86400000 : 0), raw:f })),
+    ...openBlockers.map(b => ({ kind:"blocker", id:b.id, title:b.title, sub:b.owner, urgency: 5000 + b.daysOpen, raw:b })),
+    ...p0.map(b => ({ kind:"bug", id:b.id, title:b.title, sub:b.project, urgency: 3000 + (b.openedDays||0), raw:b })),
+  ].sort((a,b) => b.urgency - a.urgency).slice(0,3);
+
+  const markFeatureDone = (f) => {
+    patchFeat(f.id, { status:"completed" });
+    const wasOverdue = f.targetDate && new Date(f.targetDate) < TODAY0;
+    if (!wasOverdue) fireCelebration();
+    saveFeature(f.id, { status:"completed" }, f.name);
+    awardAndNotify("task_complete", { onTime: !wasOverdue });
+  };
+  const resolveBlockerItem = (b) => {
+    setRBl(s=>{const n=new Set(s);n.add(b.id);return n;});
+    if (onTime(b.dueDate)) fireCelebration();
+    addToast(`Blocker resolved: "${b.title}"`);
+    resolveBlocker(b.id).then(refetchBlockers);
+    awardAndNotify("blocker_resolve");
+  };
+  const resolveBugItem = (b) => {
+    setRB(s=>{const n=new Set(s);n.add(b.id);return n;});
+    fireCelebration();
+    addToast(`Bug resolved: "${b.title}"`);
+    resolveBug(b.id).then(refetchBugs);
+    awardAndNotify("bug_resolve");
+  };
+
   /* jump-nav config with live counts */
   const JUMPS = [
     { k:"roadmap",   label:"Roadmap",   icon:"🗺", badge:`${FEATURES.length}`,            tone:GRAY2 },
     { k:"sprint",    label:"Sprint",    icon:"⚡", badge:`${sprintPct}%`,                 tone: sprintPct<40?RISK:sprintPct<70?WARN:OK },
-    { k:"releases",  label:"Releases",  icon:"🚀", badge:`${RELEASES[0].readiness}%`,     tone: RELEASES[0].status==="green"?OK:RELEASES[0].status==="yellow"?WARN:RISK },
+    { k:"releases",  label:"Releases",  icon:"🚀", badge:`${RELEASES[0]?.readiness ?? 0}%`, tone: RELEASES[0]?.status==="green"?OK:RELEASES[0]?.status==="yellow"?WARN:RISK },
     { k:"blockers",  label:"Blockers & Risks", icon:"🚧", badge:`${openBlockers.length}`, tone: openBlockers.length?RISK:OK },
     { k:"bugs",      label:"Bugs",      icon:"🐛", badge:`P0 ${p0.length}`,               tone: p0.length?RISK:OK },
     { k:"capacity",  label:"Capacity",  icon:"👥", badge:`${overloaded.length} over`,     tone: overloaded.length?RISK:OK },
@@ -193,6 +252,39 @@ export default function OperationsView({ addToast, mobile, tablet }) {
 
   return (
     <div>
+      {/* ════════ TODAY — top priorities, no scrolling required ════════ */}
+      {todayItems.length > 0 && (
+        <div style={{ background:`linear-gradient(135deg, ${INK}F8 0%, #14574A 100%)`, borderRadius:20,
+                      padding:"18px 22px", marginBottom:18 }}>
+          <div style={{ fontSize:14, fontWeight:800, color:"#fff", marginBottom:12 }}>
+            ⚡ Today — {todayItems.length} thing{todayItems.length>1?"s":""} that need you
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+            {todayItems.map(item => (
+              <div key={`${item.kind}-${item.id}`} style={{ display:"flex", alignItems:"center", gap:10,
+                                                             background:"rgba(255,255,255,.08)", borderRadius:12,
+                                                             padding:"10px 14px", flexWrap:"wrap" }}>
+                <span style={{ fontSize:9.5, fontWeight:800, padding:"2px 8px", borderRadius:6,
+                               background:"rgba(255,255,255,.15)", color:"#fff", fontFamily:mono,
+                               textTransform:"uppercase", letterSpacing:0.5 }}>{item.kind}</span>
+                <div style={{ flex:1, minWidth:140 }}>
+                  <div style={{ fontSize:13, fontWeight:700, color:"#fff" }}>{item.title}</div>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,.5)", marginTop:1 }}>{item.sub}</div>
+                </div>
+                <button onClick={() => {
+                  if (item.kind === "feature") markFeatureDone(item.raw);
+                  else if (item.kind === "blocker") resolveBlockerItem(item.raw);
+                  else resolveBugItem(item.raw);
+                }} style={{
+                  fontSize:12, fontWeight:700, padding:"6px 14px", borderRadius:10, border:"1px solid rgba(255,255,255,.25)",
+                  background:"rgba(255,255,255,.12)", color:"#fff", cursor:"pointer", fontFamily:ff, flexShrink:0,
+                }}>{item.kind === "feature" ? "✓ Mark complete" : "Resolve"}</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ════════ STICKY JUMP-NAV ════════ */}
       <div style={{ position:"sticky", top:0, zIndex:20, marginBottom:22,
                     background:`${PANEL}F2`, backdropFilter:"blur(8px)",
@@ -221,32 +313,8 @@ export default function OperationsView({ addToast, mobile, tablet }) {
           right={<span style={{ fontSize:12, color:GRAY, fontFamily:mono }}>
             {visible.length} features · {visible.filter(f=>f.blocked).length} blocked</span>} />
 
-        {/* ── ClickUp sync bar ── */}
-        <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap", marginBottom:14,
-                      background:PANEL, border:`1.5px solid ${LINE}`, borderRadius:12, padding:"8px 12px" }}>
-          <span style={{ width:8, height:8, borderRadius:"50%", flexShrink:0,
-                         background: syncing ? WARN : OK,
-                         boxShadow:`0 0 0 3px ${(syncing?WARN:OK)}22` }} />
-          <span style={{ fontSize:12, fontWeight:700, color:INK }}>
-            {syncing ? "Syncing with ClickUp…" : "Synced with ClickUp"}
-          </span>
-          <span style={{ fontSize:11, color:GRAY2, fontFamily:mono }}>
-            {sync.source}{sync.syncedAt ? ` · ${new Date(sync.syncedAt).toLocaleTimeString("en-GB",{hour:"2-digit",minute:"2-digit"})}` : ""}
-          </span>
-          <span style={{ fontSize:9.5, fontWeight:800, fontFamily:mono, color:GRAY2,
-                         background:SURFACE, border:`1px solid ${LINE}`, padding:"2px 7px", borderRadius:20 }}>
-            {SYNC_MODE.toUpperCase()}
-          </span>
-          <button onClick={()=>runSync(true)} disabled={syncing} style={{
-            marginLeft:"auto", fontSize:12, fontWeight:700, padding:"5px 14px", borderRadius:9,
-            border:`1.5px solid ${LINE}`, background:SURFACE, color:INK,
-            cursor:syncing?"default":"pointer", fontFamily:ff, opacity:syncing?0.5:1 }}>
-            ↻ Sync now
-          </button>
-        </div>
-
-        {/* filters */}
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14 }}>
+        {/* filters + table/board toggle */}
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:14, alignItems:"center" }}>
           <select value={filterStatus} onChange={e=>setFS(e.target.value)} style={{
             padding:"7px 12px", borderRadius:12, border:`1.5px solid ${LINE}`,
             fontSize:12.5, fontFamily:ff, color:INK, background:SURFACE, cursor:"pointer", outline:"none" }}>
@@ -257,8 +325,23 @@ export default function OperationsView({ addToast, mobile, tablet }) {
             fontSize:12.5, fontFamily:ff, color:INK, background:SURFACE, cursor:"pointer", outline:"none" }}>
             {projects.map(p => <option key={p} value={p}>{p === "all" ? "All projects" : p}</option>)}
           </select>
+          <div style={{ marginLeft:"auto", display:"flex", gap:4, background:PANEL, borderRadius:12, padding:3 }}>
+            {[["table","☰ Table"],["board","▦ Board"]].map(([k,l]) => (
+              <button key={k} onClick={()=>setRoadmapView(k)} style={{
+                padding:"6px 14px", borderRadius:9, border:"none", cursor:"pointer", fontFamily:ff,
+                fontSize:12, fontWeight:700, background:roadmapView===k?SURFACE:"transparent", color:roadmapView===k?INK:GRAY2,
+                boxShadow:roadmapView===k?"0 1px 4px rgba(0,0,0,.08)":"none",
+              }}>{l}</button>
+            ))}
+          </div>
         </div>
 
+        <AddTaskForm type="feature" projectOptions={projectOptions} addToast={addToast} mobile={mobile} onCreated={refreshAllTaskViews} />
+
+        {roadmapView === "board" ? (
+          <BoardView key={boardKey} addToast={addToast} mobile={mobile} user={user} />
+        ) : (
+        <>
         {/* feature table */}
         <div style={{ overflowX:"auto", borderRadius:18 }}>
         <div style={{ background:SURFACE, border:`1.5px solid ${LINE}`, borderRadius:18, overflow:"hidden", minWidth:640 }}>
@@ -289,9 +372,6 @@ export default function OperationsView({ addToast, mobile, tablet }) {
                       <span style={{ fontSize:10, color:GRAY, transition:"transform .2s",
                                      transform:isOpen?"rotate(90deg)":"none", display:"inline-block" }}>▸</span>
                       {f.name}
-                      {f._fromClickup && <span style={{ fontSize:9, fontWeight:900, fontFamily:mono,
-                                     background:`${BLUE}1A`, color:BLUE, padding:"1px 7px", borderRadius:5,
-                                     letterSpacing:0.3 }}>NEW · CLICKUP</span>}
                     </div>
                     <div style={{ display:"flex", gap:6, marginTop:4, flexWrap:"wrap", paddingLeft:17 }}>
                       <span style={{ fontSize:10, fontWeight:800, padding:"1px 7px", borderRadius:5,
@@ -362,8 +442,8 @@ export default function OperationsView({ addToast, mobile, tablet }) {
                           </div>
                         </div>
                         <div style={{ marginTop:16, display:"flex", gap:8, flexWrap:"wrap" }}>
-                          <button onClick={()=>{ const patch=featEdits[orig.id]||{}; setEditingFeat(null); syncPush(orig.clickupId, patch, f.name); }}
-                            style={actBtn("#fff", INK)}>💾 Save & sync</button>
+                          <button onClick={()=>{ const patch=featEdits[orig.id]||{}; setEditingFeat(null); saveFeature(orig.id, patch, f.name); }}
+                            style={actBtn("#fff", INK)}>💾 Save</button>
                           <button onClick={()=>{ setFeatEdits(o=>{const n={...o}; delete n[orig.id]; return n;}); setEditingFeat(null); addToast(`Edits discarded`); }}
                             style={actBtn(GRAY2, SURFACE, true)}>Cancel</button>
                         </div>
@@ -407,10 +487,10 @@ export default function OperationsView({ addToast, mobile, tablet }) {
 
                       {/* Mark complete / Reopen */}
                       {eff !== "completed" ? (
-                        <button onClick={()=>{ patchFeat(orig.id,{status:"completed"}); if(!overdue) fireCelebration(); syncPush(orig.clickupId,{status:"completed"}, f.name); }}
+                        <button onClick={()=>markFeatureDone(orig)}
                           style={actBtn(OK, OK_BG)}>✓ Mark complete</button>
                       ) : (
-                        <button onClick={()=>{ patchFeat(orig.id,{status:orig.status}); syncPush(orig.clickupId,{status:orig.status}, f.name); }}
+                        <button onClick={()=>{ patchFeat(orig.id,{status:orig.status}); saveFeature(orig.id,{status:orig.status}, f.name); }}
                           style={actBtn(GRAY2, PANEL)}>↺ Reopen</button>
                       )}
 
@@ -428,11 +508,9 @@ export default function OperationsView({ addToast, mobile, tablet }) {
                         <button onClick={()=>addToast(`🚩 "${f.name}" escalated to leadership`)}
                           style={actBtn(RISK, RISK_BG)}>🚩 Escalate</button>
                       )}
-
-                      {/* Open in ClickUp */}
-                      <button onClick={()=>{ window.open(`https://app.clickup.com/t/${f.clickupId}`,"_blank","noopener"); addToast(`↗ Opening "${f.name}" in ClickUp`); }}
-                        style={actBtn(GRAY2, SURFACE, true)}>↗ Open in ClickUp</button>
                     </div>
+
+                    <TaskDetailExtras taskId={orig.id} currentProfile={currentProfile} mobile={mobile} />
                     </>
                     )}
                   </div>
@@ -442,6 +520,8 @@ export default function OperationsView({ addToast, mobile, tablet }) {
           })}
         </div>
         </div>
+        </>
+        )}
       </section>
 
       {/* ════════ 2 · SPRINT ════════ */}
@@ -456,6 +536,8 @@ export default function OperationsView({ addToast, mobile, tablet }) {
                 {count} {s.replace("_"," ")}</span>);
             })}</div>
           } />
+        <AddTaskForm type="feature" defaultStatus="not_started" sprintId={CURRENT_SPRINT.id}
+          projectOptions={projectOptions} addToast={addToast} mobile={mobile} onCreated={refreshAllTaskViews} />
         <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr":"1fr 1fr", gap:12 }}>
           {["todo","in_progress","blocked","done"].map(col => {
             const items = CURRENT_SPRINT.items
@@ -470,7 +552,11 @@ export default function OperationsView({ addToast, mobile, tablet }) {
                 {col.replace("_"," ")} · {items.length}
               </div>
               {items.map(item => {
-                const setItem = (patch, msg) => { setSprintOv(o=>({ ...o, [item.id]:{ ...(o[item.id]||{}), ...patch } })); if(msg) addToast(msg); };
+                const setItem = (patch, msg) => {
+                  setSprintOv(o=>({ ...o, [item.id]:{ ...(o[item.id]||{}), ...patch } }));
+                  if(msg) addToast(msg);
+                  updateSprintItem(item.sprintItemId, patch);
+                };
                 return (
                 <div key={item.id} style={{ background:PANEL, borderRadius:10, padding:"10px 12px", marginBottom:8 }}>
                   <div style={{ fontSize:13, fontWeight:600, color:INK }}>{item.title}</div>
@@ -481,7 +567,7 @@ export default function OperationsView({ addToast, mobile, tablet }) {
                   {/* per-card actions */}
                   <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:8 }}>
                     {col !== "done" && NEXT[col] && !item.blocked && (
-                      <button onClick={()=>{ const ns=NEXT[col]; setItem({status:ns}, `"${item.title}" → ${ns.replace("_"," ")}`); if(ns==="done") fireCelebration(); }}
+                      <button onClick={()=>{ const ns=NEXT[col]; setItem({status:ns}, `"${item.title}" → ${ns.replace("_"," ")}`); if(ns==="done") { fireCelebration(); awardAndNotify("task_complete", { onTime:true }); } }}
                         style={miniBtn(INK)}>→ {NEXT[col]==="done"?"Done":"Start"}</button>
                     )}
                     {col === "blocked" && (
@@ -516,7 +602,11 @@ export default function OperationsView({ addToast, mobile, tablet }) {
             const col  = allReady ? OK : rel.status === "green" ? OK : rel.status === "yellow" ? WARN : RISK;
             const bg   = allReady ? OK_BG : rel.status === "green" ? OK_BG : rel.status === "yellow" ? WARN_BG : RISK_BG;
             const readiness = Math.round((done/total)*100);
-            const toggleCheck = (k) => setRelCheck(o=>({ ...o, [`${rel.id}.${k}`]: !checklist[k] }));
+            const toggleCheck = (k) => {
+              const nextChecklist = { ...checklist, [k]: !checklist[k] };
+              setRelCheck(o=>({ ...o, [`${rel.id}.${k}`]: nextChecklist[k] }));
+              updateRelease(rel.id, { deployChecklist: nextChecklist });
+            };
             return (
               <div key={rel.id} style={{ background:SURFACE, border:`1.5px solid ${col}44`, borderRadius:18 }}>
                 <div style={{ background:bg, padding:"16px 20px", borderRadius:"16px 16px 0 0",
@@ -623,7 +713,7 @@ export default function OperationsView({ addToast, mobile, tablet }) {
                       <span style={{ fontSize:10, fontWeight:800, background:RISK_BG, color:RISK,
                                      padding:"2px 8px", borderRadius:5 }}>ESCALATED</span>
                     )}
-                    <button onClick={() => { setRBl(s=>{const n=new Set(s);n.add(b.id);return n;}); if(onTime(b.dueDate)) fireCelebration(); addToast(`Blocker resolved: "${b.title}"`); }}
+                    <button onClick={() => resolveBlockerItem(b)}
                       style={{ fontSize:12, fontWeight:700, padding:"5px 14px", borderRadius:10,
                                border:`1.5px solid ${LINE}`, background:SURFACE, color:GRAY2,
                                cursor:"pointer", fontFamily:ff }}>Resolve</button>
@@ -639,7 +729,7 @@ export default function OperationsView({ addToast, mobile, tablet }) {
             <div style={{ fontSize:11, fontWeight:700, letterSpacing:1, textTransform:"uppercase",
                           color:GRAY, fontFamily:mono, marginBottom:14 }}>Top {RISKS.length} Risks</div>
             {RISKS.map((r,i) => {
-              const mitigated = risksDone.has(r.id);
+              const mitigated = risksDone.has(r.id) || r.mitigated;
               return (
               <div key={r.id} style={{ padding:"12px 0", borderBottom: i<RISKS.length-1?`1px solid ${PANEL}`:"none",
                                        opacity: mitigated?0.55:1 }}>
@@ -661,12 +751,12 @@ export default function OperationsView({ addToast, mobile, tablet }) {
                     <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:7 }}>
                       {!mitigated ? (
                         <>
-                          <button onClick={()=>{ setRisksDone(s=>{const n=new Set(s);n.add(r.id);return n;}); addToast(`✓ Risk mitigated: "${r.title}"`); }}
+                          <button onClick={()=>{ setRisksDone(s=>{const n=new Set(s);n.add(r.id);return n;}); addToast(`✓ Risk mitigated: "${r.title}"`); setRiskMitigated(r.id, true).then(refetchRisks); }}
                             style={miniBtn(OK)}>✓ Mark mitigated</button>
                           <button onClick={()=>addToast(`🚩 Risk escalated: "${r.title}" → ${r.owner}`)} style={miniBtn(RISK)}>🚩 Escalate</button>
                         </>
                       ) : (
-                        <button onClick={()=>setRisksDone(s=>{const n=new Set(s);n.delete(r.id);return n;})} style={miniBtn(GRAY2)}>↺ Reopen risk</button>
+                        <button onClick={()=>{ setRisksDone(s=>{const n=new Set(s);n.delete(r.id);return n;}); setRiskMitigated(r.id, false).then(refetchRisks); }} style={miniBtn(GRAY2)}>↺ Reopen risk</button>
                       )}
                     </div>
                   </div>
@@ -680,6 +770,7 @@ export default function OperationsView({ addToast, mobile, tablet }) {
       {/* ════════ 5 · BUGS & QUALITY ════════ */}
       <section ref={refs.bugs} style={{ marginBottom:34, scrollMarginTop:80 }}>
         <SectionHead icon="🐛" title="Bugs & Quality" sub="Open defects by priority + 5-week trend" />
+        <AddTaskForm type="bug" projectOptions={projectOptions} addToast={addToast} mobile={mobile} onCreated={refreshAllTaskViews} />
         {/* priority summary — click to filter the list */}
         <div style={{ display:"flex", gap:10, marginBottom:20, flexWrap:"wrap" }}>
           {[["P0","Critical",p0.length,RISK,RISK_BG],["P1","High",p1.length,WARN,WARN_BG],
@@ -737,7 +828,7 @@ export default function OperationsView({ addToast, mobile, tablet }) {
                 <span style={{ fontSize:12, color:GRAY2 }}>{b.assignee}</span>
                 <span style={{ fontSize:12, fontFamily:mono, color:b.openedDays>7?RISK:GRAY2 }}>{b.openedDays}d</span>
                 <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-                  <button onClick={()=>{ setRB(s=>{const n=new Set(s);n.add(b.id);return n;}); fireCelebration(); addToast(`Bug resolved: "${b.title}"`); }}
+                  <button onClick={()=>resolveBugItem(b)}
                     style={{ fontSize:11, padding:"4px 10px", borderRadius:8,
                              border:`1px solid ${LINE}`, background:SURFACE, color:GRAY2,
                              cursor:"pointer", fontFamily:ff }}>Resolve</button>
@@ -869,7 +960,7 @@ export default function OperationsView({ addToast, mobile, tablet }) {
                   <span style={{ fontSize:11, fontFamily:mono, color:d.pendingSince>4?RISK:WARN }}>
                     Pending {d.pendingSince}d</span>
                   {!resolved && (
-                    <button onClick={()=>{ setDecDone(s=>{const n=new Set(s);n.add(d.id);return n;}); if(onTime(d.dueDate)) fireCelebration(); addToast(`Decision closed: "${d.title}"`); }}
+                    <button onClick={()=>{ setDecDone(s=>{const n=new Set(s);n.add(d.id);return n;}); if(onTime(d.dueDate)) fireCelebration(); addToast(`Decision closed: "${d.title}"`); closeDecision(d.id).then(refetchDecisions); }}
                       style={{ fontSize:12, fontWeight:700, padding:"5px 14px", borderRadius:10,
                                border:`1.5px solid ${LINE}`, background:SURFACE, color:GRAY2,
                                cursor:"pointer", fontFamily:ff }}>Mark done</button>

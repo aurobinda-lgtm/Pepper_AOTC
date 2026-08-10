@@ -1,5 +1,7 @@
-// Three demo users — one per role.
-// Switch users in the header to re-scope the entire app.
+// Login roster.
+// The 7 "writeAccess" profiles (pm/cto/cdo/delivery) sign in with a real
+// Supabase account (email + password) — see AccessGate.jsx. CEO + clients
+// keep the original PIN-picker flow untouched.
 
 export const USERS = [
   {
@@ -7,8 +9,9 @@ export const USERS = [
     name:     "Aurobinda",
     role:     "pm",
     initials: "AK",
-    email:    "aurobinda@artoftech.in",
-    pin:      "1111",          // change before going live
+    email:    "aurobinda@artoftechconsulting.com",
+    writeAccess: true,
+    scopeProjects: null, // PM — sees every space
     projects: null,
   },
   {
@@ -17,7 +20,8 @@ export const USERS = [
     role:      "cto",
     initials:  "IG",
     email:     "indranil@artoftechconsulting.com",
-    pin:       "2222",
+    writeAccess: true,
+    scopeProjects: ["MUWCI", "AOTC Website", "VenueSage"],
     title:     "CTO · CPO · HR & Finance · Project Owner",
     projects:  ["muwci", "venuesage", "ufobuzz", "aotc-web", "carer", "ufoemotive", "gigspace", "moviebeam"],
     clickupId: 260478634,
@@ -28,10 +32,55 @@ export const USERS = [
     role:      "cdo",
     initials:  "JC",
     email:     "jeetendra@artoftechconsulting.com",
-    pin:       "5555",
+    writeAccess: true,
+    scopeProjects: ["UFO Aurora", "UFO Emotive", "UFO Buzz", "VenueSage"],
     title:     "Chief Design Officer · Project Owner",
     projects:  ["muwci", "ufoemotive", "ufobuzz", "venuesage", "gigspace", "moviebeam"],
     clickupId: 100901542,
+  },
+  {
+    id:        "d1",
+    name:      "Caryn Putman",
+    role:      "delivery",
+    initials:  "CP",
+    email:     "caryn@artoftechconsulting.com",
+    writeAccess: true,
+    scopeProjects: ["MUWCI", "Carer"],
+    title:     "Delivery",
+    projects:  null,
+  },
+  {
+    id:        "d2",
+    name:      "Mahesh Pawar",
+    role:      "delivery",
+    initials:  "MP",
+    email:     "mahesh@artoftechconsulting.com",
+    writeAccess: true,
+    scopeProjects: ["MUWCI", "VIBE", "Carer"],
+    title:     "Delivery",
+    projects:  null,
+  },
+  {
+    id:        "d3",
+    name:      "Jyoti Shid",
+    role:      "delivery",
+    initials:  "JS",
+    email:     "jyoti@artoftechconsulting.com",
+    writeAccess: true,
+    scopeProjects: ["MUWCI"],
+    title:     "Delivery",
+    projects:  null,
+  },
+  {
+    id:        "d4",
+    name:      "Tripti A",
+    role:      "delivery",
+    initials:  "TA",
+    email:     "tripti@artoftechconsulting.com",
+    writeAccess: true,
+    scopeProjects: ["Carer"],
+    title:     "Delivery",
+    projects:  null,
   },
   {
     id:       "ceo1",
@@ -101,6 +150,7 @@ export const ROLE_LABEL = {
   ceo:        "CEO",
   cto:        "Leadership",
   cdo:        "Leadership",
+  delivery:   "Delivery",
   admin:      "Admin",
   member:     "Team Member",
   analyst:    "Analyst",
@@ -113,6 +163,7 @@ export const ROLE_DESC_MAP = {
   ceo:        "Command centre — portfolio & financials",
   cto:        "CTO · CPO · HR & Finance · Projects",
   cdo:        "Chief Design Officer · Projects",
+  delivery:   "Delivery team — create & manage tasks",
   admin:      "System administration & user management",
   member:     "Team tasks, timesheets & project updates",
   analyst:    "Data, reports & business insights",

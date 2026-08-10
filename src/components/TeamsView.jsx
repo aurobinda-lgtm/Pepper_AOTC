@@ -1,5 +1,5 @@
 import { INK, SURFACE, PANEL, GRAY, GRAY2, LINE, OK, OK_BG, WARN, WARN_BG, RISK, RISK_BG, ff, mono } from "../brand/tokens.js";
-import { TEAM_CAPACITY, DECISIONS, HEALTH_MATRIX } from "../data/pm_seed.js";
+import { useTeamCapacity, useDecisions, useHealthMatrix, closeDecision } from "../lib/queries.js";
 import { useState } from "react";
 
 function LoadBar({ load }) {
@@ -13,6 +13,17 @@ function LoadBar({ load }) {
 
 export default function TeamsView({ addToast, mobile, tablet }) {
   const [decDone, setDecDone] = useState(new Set());
+  const TEAM_CAPACITY = useTeamCapacity().data ?? [];
+  const HEALTH_MATRIX = useHealthMatrix().data ?? [];
+  const { data: decisionsData, refetch: refetchDecisions } = useDecisions();
+  const DECISIONS = decisionsData ?? [];
+
+  const handleCloseDecision = async (d) => {
+    setDecDone((s) => { const n = new Set(s); n.add(d.id); return n; });
+    addToast(`Decision closed: "${d.title}"`);
+    await closeDecision(d.id);
+    refetchDecisions();
+  };
 
   return (
     <div>
@@ -142,7 +153,7 @@ export default function TeamsView({ addToast, mobile, tablet }) {
                     Pending {d.pendingSince}d
                   </span>
                   {!resolved && (
-                    <button onClick={()=>{ setDecDone(s=>{const n=new Set(s);n.add(d.id);return n;}); addToast(`Decision closed: "${d.title}"`); }}
+                    <button onClick={()=>handleCloseDecision(d)}
                       style={{ fontSize:12, fontWeight:700, padding:"5px 14px", borderRadius:10,
                                border:`1.5px solid ${LINE}`, background:SURFACE, color:GRAY2,
                                cursor:"pointer", fontFamily:ff }}>

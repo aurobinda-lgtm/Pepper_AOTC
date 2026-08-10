@@ -1,10 +1,21 @@
 import { useState, useEffect, useRef } from "react";
 import { INK, SURFACE, PANEL, GRAY, GRAY2, LINE,
          OK, OK_BG, WARN, WARN_BG, RISK, RISK_BG, ff, mono } from "../brand/tokens.js";
-import { HEALTH_MATRIX, BLOCKERS, DECISIONS, BUGS,
-         CURRENT_SPRINT, RELEASES, TEAM_CAPACITY,
-         BUSINESS_METRICS, CUSTOMER_METRICS,
-         OUTLOOK_CONNECTED, PM_EMAIL } from "../data/pm_seed.js";
+import { OUTLOOK_CONNECTED, PM_EMAIL } from "../data/pm_seed.js";
+import { scopeByProject } from "../lib/access.js";
+import { getAllStats } from "../lib/gamification.js";
+import {
+  useHealthMatrix, useBlockers, useDecisions, useBugs,
+  useCurrentSprint, useReleases, useTeamCapacity,
+  useBusinessMetrics, useCustomerMetrics,
+  resolveBlocker, closeDecision,
+} from "../lib/queries.js";
+
+const EMPTY_SPRINT = { name:"", startDate:"", endDate:"", velocity:null, items:[] };
+const EMPTY_RELEASE = { id:"none", version:"—", goLive:null, readiness:0, qaStatus:"not_started",
+  criticalBugs:0, uat:"not_started", rollback:false, status:"yellow", features:[], deployChecklist:{} };
+const EMPTY_BUSINESS_METRICS = { arr:null, mrr:null, mrrGrowth:null, churn:null, newCustomers:null, trialToPaid:null, renewalRisk:null, nps:null };
+const EMPTY_CUSTOMER_METRICS = { openTickets:0, criticalIssues:0, slaBreaches:0, featureRequests:0, highRiskAccounts:0, csat:null, accounts:[] };
 
 /* ── deadline helpers ── */
 const TODAY0 = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
@@ -43,9 +54,9 @@ function DeadlineAlert() {
 /* ─────────────────────────────────────────────────────────────────────────
    AI RECOMMENDATION ENGINE  (mock — swap with real Claude API call)
 ───────────────────────────────────────────────────────────────────────── */
-function buildRecommendations({ blockers, bugs, decisions, releases, capacity, resolvedBlk, resolvedDec }) {
+function buildRecommendations({ blockers, bugs, decisions, releases, capacity, resolvedBlk, resolvedDec, customerMetrics }) {
   const actions = [];
-  const rel = releases[0];
+  const rel = releases[0] || EMPTY_RELEASE;
   const daysToRelease = Math.ceil((new Date(rel.goLive) - new Date()) / 86400000);
 
   // ── Critical blockers ≥4 days ──
@@ -264,11 +275,11 @@ Program Manager — Art of Tech`,
   }
 
   // ── High-risk accounts ──
-  if (CUSTOMER_METRICS.highRiskAccounts > 0) {
+  if (customerMetrics.highRiskAccounts > 0) {
     actions.push({
       id:"churn-risk", urgency:"medium", icon:"⚠️",
-      headline: `${CUSTOMER_METRICS.highRiskAccounts} high-risk accounts — churn signals detected`,
-      why: `${CUSTOMER_METRICS.criticalIssues} critical issues + ${CUSTOMER_METRICS.slaBreaches} SLA breaches. Vertex & Bloom Co at risk.`,
+      headline: `${customerMetrics.highRiskAccounts} high-risk accounts — churn signals detected`,
+      why: `${customerMetrics.criticalIssues} critical issues + ${customerMetrics.slaBreaches} SLA breaches. Vertex & Bloom Co at risk.`,
       source:"Outlook + Fireflies", effort:"20 min",
       steps: ["Schedule check-in call with Vertex PM", "Review open tickets for Bloom Co", "Share resolution timeline with both accounts"],
       draft: {
@@ -282,7 +293,7 @@ Program Manager — Art of Tech`,
 I wanted to reach out proactively. I've reviewed your account and noticed a few open items I'd like to address personally.
 
 Current open items on your account:
-• ${CUSTOMER_METRICS.criticalIssues} critical issues under investigation
+• ${customerMetrics.criticalIssues} critical issues under investigation
 • SLA response times — I owe you a better explanation
 
 I'd like to schedule a 30-minute call this week to:
@@ -589,7 +600,7 @@ function ActionCard({ action, index, open, onToggle, onDone, done, sentDrafts, o
 /* ─────────────────────────────────────────────────────────────────────────
    MAIN VIEW
 ───────────────────────────────────────────────────────────────────────── */
-export default function PulseView({ addToast, mobile, tablet }) {
+export default function PulseView({ addToast, mobile, tablet, user }) {
   const [open,       setOpen]    = useState(null);
   const [doneTasks,  setDone]    = useState(new Set());
   const [sentDrafts, setSent]    = useState(new Set());
@@ -602,6 +613,20 @@ export default function PulseView({ addToast, mobile, tablet }) {
   const toggle    = (id) => setOpen(o => o === id ? null : id);
   const toggleDec = (id) => setOpenDec(o => o === id ? null : id);
   const toggleBlk = (id) => setOpenBlk(o => o === id ? null : id);
+
+  const HEALTH_MATRIX   = useHealthMatrix().data ?? [];
+  const TEAM_CAPACITY   = useTeamCapacity().data ?? [];
+  const { data: blockersData, refetch: refetchBlockers } = useBlockers();
+  const BLOCKERS = scopeByProject(user, blockersData ?? []);
+  const { data: decisionsData, refetch: refetchDecisions } = useDecisions();
+  const DECISIONS = scopeByProject(user, decisionsData ?? []);
+  const BUGS = scopeByProject(user, useBugs().data ?? []);
+  const sprintRaw = useCurrentSprint().data ?? EMPTY_SPRINT;
+  const CURRENT_SPRINT  = { ...sprintRaw, items: scopeByProject(user, sprintRaw.items) };
+  const RELEASES        = scopeByProject(user, useReleases().data ?? []);
+  const BUSINESS_METRICS = useBusinessMetrics().data ?? EMPTY_BUSINESS_METRICS;
+  const CUSTOMER_METRICS = useCustomerMetrics().data ?? EMPTY_CUSTOMER_METRICS;
+  const leaderboard = getAllStats();
 
   // ── Auto-email the PM about missed deadlines (fires once Outlook is connected) ──
   const alertedRef = useRef(false);
@@ -630,7 +655,7 @@ export default function PulseView({ addToast, mobile, tablet }) {
   };
 
   // ── derived ──────────────────────────────────────────────────────
-  const rel          = RELEASES[0];
+  const rel          = RELEASES[0] || EMPTY_RELEASE;
   const critBugs     = BUGS.filter(b => b.priority==="P0" && b.status!=="resolved");
   const p1Bugs       = BUGS.filter(b => b.priority==="P1" && b.status!=="resolved");
   const openBlockers = BLOCKERS.filter(b => !blkDone.has(b.id));
@@ -657,6 +682,7 @@ export default function PulseView({ addToast, mobile, tablet }) {
     blockers:BLOCKERS, bugs:BUGS, decisions:DECISIONS,
     releases:RELEASES, capacity:TEAM_CAPACITY,
     resolvedBlk:blkDone, resolvedDec:decDone,
+    customerMetrics:CUSTOMER_METRICS,
   });
   const pending  = recommendations.filter(r => !doneTasks.has(r.id));
   const critical = pending.filter(r => r.urgency==="critical").length;
@@ -878,7 +904,7 @@ export default function PulseView({ addToast, mobile, tablet }) {
                   )}
                   <div style={{ fontSize:11.5,color:GRAY,marginBottom:8 }}>If delayed: {d.impact}</div>
                   {missed && <DeadlineAlert />}
-                  <button onClick={()=>{ setDecDone(s=>{const n=new Set(s);n.add(d.id);return n;}); setOpenDec(null); addToast(`Decision closed: "${d.title}"`); }}
+                  <button onClick={()=>{ setDecDone(s=>{const n=new Set(s);n.add(d.id);return n;}); setOpenDec(null); addToast(`Decision closed: "${d.title}"`); closeDecision(d.id).then(refetchDecisions); }}
                     style={{ fontSize:12,fontWeight:700,padding:"5px 14px",
                              borderRadius:8,border:`1px solid ${LINE}`,background:PANEL,
                              color:GRAY2,cursor:"pointer",fontFamily:ff }}>
@@ -941,7 +967,7 @@ export default function PulseView({ addToast, mobile, tablet }) {
                   )}
                   <div style={{ fontSize:11.5,color:GRAY,marginBottom:8 }}>{b.impact}</div>
                   {missed && <DeadlineAlert />}
-                  <button onClick={()=>{ setBlkDone(s=>{const n=new Set(s);n.add(b.id);return n;}); setOpenBlk(null); addToast(`Blocker resolved: "${b.title}"`); }}
+                  <button onClick={()=>{ setBlkDone(s=>{const n=new Set(s);n.add(b.id);return n;}); setOpenBlk(null); addToast(`Blocker resolved: "${b.title}"`); resolveBlocker(b.id).then(refetchBlockers); }}
                     style={{ fontSize:12,fontWeight:700,padding:"5px 14px",
                              borderRadius:8,border:`1px solid ${LINE}`,background:PANEL,
                              color:GRAY2,cursor:"pointer",fontFamily:ff }}>
@@ -952,6 +978,30 @@ export default function PulseView({ addToast, mobile, tablet }) {
             </div>
           );})}
         </div>
+      </div>
+
+      {/* ══ TEAM LEADERBOARD (PM only) ═══════════════════════════ */}
+      <div style={{ marginTop:14, background:SURFACE, border:`1.5px solid ${LINE}`, borderRadius:18, padding:"18px 20px" }}>
+        <div style={{ fontSize:14, fontWeight:800, color:INK, marginBottom:2 }}>🏆 Team Leaderboard</div>
+        <div style={{ fontSize:11.5, color:GRAY2, marginBottom:14 }}>Points from completed tasks, resolved bugs & blockers, and daily streaks.</div>
+        {leaderboard.length === 0 ? (
+          <div style={{ fontSize:13, color:GRAY2 }}>No activity yet.</div>
+        ) : leaderboard.map((row, i) => (
+          <div key={row.email} style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 0",
+                                        borderBottom: i<leaderboard.length-1?`1px solid ${PANEL}`:"none" }}>
+            <span style={{ width:22, fontSize:13, fontWeight:900, color: i===0?WARN:GRAY2, fontFamily:mono, textAlign:"center" }}>
+              {i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}
+            </span>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:INK }}>{row.name}</div>
+              <div style={{ fontSize:11, color:GRAY2, marginTop:1 }}>
+                {row.badges.length} badge{row.badges.length!==1?"s":""}
+                {row.streak > 0 && <span> · 🔥 {row.streak}d streak</span>}
+              </div>
+            </div>
+            <span style={{ fontSize:15, fontWeight:900, color:INK, fontFamily:mono }}>{row.points}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

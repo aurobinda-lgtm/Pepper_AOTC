@@ -1,5 +1,11 @@
 // Role scoping — funnel ALL visibility through this module.
 // Components never filter data themselves; they call these functions.
+import { getScopeProjects } from "./localDirectory.js";
+
+// Every project/client "space" known to the app — used both for scoping
+// (Team Members' Spaces editor) and for the project picker when creating a
+// new task, so a new task can always be filed somewhere everyone recognizes.
+export const ALL_PROJECTS = ["MUWCI", "VenueSage", "UFO Buzz", "UFO Emotive", "UFO Aurora", "Carer", "Campus OS", "AOTC Website", "VIBE", "NAIN"];
 
 /**
  * Projects visible to the given user.
@@ -65,20 +71,29 @@ export function can(user, action) {
 
 /**
  * Nav tabs for the given user.
+ *
+ * pm sees everything (all spaces). cto/cdo/delivery are the real
+ * write-access delivery team — they get the live Supabase-backed command
+ * center (Operations/Team), scoped to their own project(s) via
+ * scopeByProject() below; the portfolio-wide Pulse/Business/Requests tabs
+ * are PM-only for now. The Board (Kanban) view lives inside Operations as a
+ * view toggle rather than its own tab, to keep navigation short. ceo/client/
+ * consultant keep their original (unrelated, seed.js-driven) nav untouched.
  */
 export function navFor(user) {
-  if (user.role === "cto") {
+  if (user.role === "pm") {
     return [
-      { key: "cto",         label: "Command",  icon: "◉" },
-      { key: "cto-product", label: "Team",     icon: "◈" },
-      { key: "cto-finance", label: "Finance",  icon: "$" },
+      { key: "pulse",      label: "Pulse",      icon: "◉" },
+      { key: "operations", label: "Operations", icon: "◫" },
+      { key: "business",   label: "Business",   icon: "$" },
+      { key: "requests",   label: "Requests",   icon: "↓" },
+      { key: "team",       label: "Team",       icon: "◈" },
     ];
   }
-  if (user.role === "cdo") {
+  if (user.role === "cto" || user.role === "cdo" || user.role === "delivery") {
     return [
-      { key: "cdo",          label: "Creative",  icon: "◈" },
-      { key: "cdo-projects", label: "Projects",  icon: "◫" },
-      { key: "cdo-reviews",  label: "Reviews",   icon: "✓" },
+      { key: "operations", label: "Operations", icon: "◫" },
+      { key: "team",       label: "Team",       icon: "◈" },
     ];
   }
   if (user.role === "ceo") {
@@ -94,19 +109,11 @@ export function navFor(user) {
       { key: "client-requests",  label: "Requests",   icon: "↑" },
     ];
   }
-  if (user.role === "consultant") {
-    return [
-      { key: "inbox",    label: "Inbox",    icon: "✉" },
-      { key: "tasks",    label: "Tasks",    icon: "✓" },
-      { key: "projects", label: "Projects", icon: "◫" },
-    ];
-  }
-  // pm — Operations merges Delivery + Risks + Teams into one command center
+  // consultant (legacy/unused today)
   return [
-    { key: "pulse",      label: "Pulse",      icon: "◉" },
-    { key: "operations", label: "Operations", icon: "◫" },
-    { key: "business",   label: "Business",   icon: "$" },
-    { key: "requests",   label: "Requests",   icon: "↓" },
+    { key: "inbox",    label: "Inbox",    icon: "✉" },
+    { key: "tasks",    label: "Tasks",    icon: "✓" },
+    { key: "projects", label: "Projects", icon: "◫" },
   ];
 }
 
@@ -114,10 +121,22 @@ export function navFor(user) {
  * Default landing view for the given role.
  */
 export function landingFor(user) {
-  if (user.role === "ceo")    return "ceo";
-  if (user.role === "cto")    return "cto";
-  if (user.role === "cdo")    return "cdo";
   if (user.role === "pm")     return "pulse";
+  if (user.role === "cto" || user.role === "cdo" || user.role === "delivery") return "operations";
+  if (user.role === "ceo")    return "ceo";
   if (user.role === "client") return "client-overview";
   return "inbox";
+}
+
+/**
+ * Scopes rows to the signed-in user's assigned project(s) ("their space").
+ * `user.scopeProjects` is an array of project display names, or
+ * null/undefined for unrestricted access (the PM, for now).
+ * Rows with no project (company-wide items) are only visible when unrestricted.
+ */
+export function scopeByProject(user, rows, projectKey = "project") {
+  if (!rows) return rows;
+  const scope = getScopeProjects(user);
+  if (!scope) return rows; // PM / unrestricted
+  return rows.filter((r) => r[projectKey] && scope.includes(r[projectKey]));
 }

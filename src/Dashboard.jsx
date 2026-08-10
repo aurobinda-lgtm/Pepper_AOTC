@@ -14,6 +14,8 @@ import AccessGate from "./components/AccessGate.jsx";
 import PulseView    from "./components/PulseView.jsx";
 import OperationsView from "./components/OperationsView.jsx";
 import BusinessView from "./components/BusinessView.jsx";
+import TeamMembersView from "./components/TeamMembersView.jsx";
+import { getStats, BADGE_DEFS } from "./lib/gamification.js";
 
 /* ---- Pepper avatar image data ---- */
 const AV = {
@@ -670,6 +672,17 @@ export default function Dashboard() {
   const [user, setUser]         = useState(null);   // null until unlocked via AccessGate
   const [showUserMenu, setShowUserMenu] = useState(false);
 
+  /* gamification — points/streak chip, refreshed periodically since it's localStorage-backed */
+  const [showBadges, setShowBadges] = useState(false);
+  const [gStats, setGStats] = useState({ points: 0, streak: 0, badges: [] });
+  useEffect(() => {
+    if (!user?.writeAccess) return;
+    const refresh = () => setGStats(getStats(user.email));
+    refresh();
+    const iv = setInterval(refresh, 3000);
+    return () => clearInterval(iv);
+  }, [user]);
+
   /* view */
   const [view, setView]         = useState(() => landingFor(USERS[0]));
 
@@ -1086,6 +1099,7 @@ export default function Dashboard() {
     view === "pulse"          ? `${greeting}, ${heroName || (user?.name || "")}` :
     view === "operations"        ? "Operations Command Center" :
     view === "business"          ? "Business Intelligence" :
+    view === "team"              ? "Team Members" :
     view === "requests"          ? "Client Requests" :
     view === "client-overview"   ? `Welcome, ${user?.name}` :
     view === "client-requests"   ? "Your Requests" : "Art of Tech";
@@ -1101,6 +1115,7 @@ export default function Dashboard() {
     view === "pulse"    ? "KPI summary · blockers · sprint snapshot · pending decisions" :
     view === "operations" ? "Roadmap · sprint · releases · blockers · risks · bugs · capacity · decisions" :
     view === "business"   ? "Customers · product usage · revenue · budget" :
+    view === "team"       ? "Manage who can create and edit tasks" :
     view === "requests"         ? `${clientRequests.filter(r => r.status === "pending").length} pending · ${clientRequests.filter(r => r.status === "accepted").length} accepted · ${clientRequests.filter(r => r.status === "declined").length} declined` :
     view === "client-overview"  ? `${user?.company || ""} · live project status` :
     view === "client-requests"  ? `${clientRequests.filter(r => r.client === user?.company).length} submitted · ${clientRequests.filter(r => r.client === user?.company && r.status === "accepted").length} accepted` : "";
@@ -1353,6 +1368,41 @@ export default function Dashboard() {
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {/* gamification — points/streak chip (write-access team only) */}
+          {user?.writeAccess && (
+            <div style={{ position: "relative" }}>
+              <button onClick={() => setShowBadges(s => !s)} style={{
+                display: "flex", alignItems: "center", gap: 6, padding: "6px 12px",
+                border: `1.5px solid ${LINE}`, borderRadius: 20, background: PANEL, cursor: "pointer", fontFamily: ff,
+                fontSize: 12.5, fontWeight: 700, color: INK,
+              }}>
+                <span>⭐ {gStats.points}</span>
+                {gStats.streak > 0 && <span style={{ color: GRAY }}>🔥 {gStats.streak}d</span>}
+              </button>
+              {showBadges && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 50, minWidth: 220,
+                  background: SURFACE, border: `1.5px solid ${LINE}`, borderRadius: 14, padding: "14px 16px",
+                  boxShadow: "0 10px 30px rgba(0,0,0,.12)",
+                }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: GRAY, textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 10 }}>
+                    Your badges
+                  </div>
+                  {gStats.badges.length === 0 && <div style={{ fontSize: 12.5, color: GRAY2 }}>None yet — complete a task, resolve a bug, or clear a blocker to start earning points.</div>}
+                  {BADGE_DEFS.filter(b => gStats.badges.includes(b.key)).map(b => (
+                    <div key={b.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+                      <span style={{ fontSize: 18 }}>{b.icon}</span>
+                      <div>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>{b.label}</div>
+                        <div style={{ fontSize: 11, color: GRAY2 }}>{b.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -3444,18 +3494,23 @@ export default function Dashboard() {
         )}
 
         {/* ================= PM PULSE ================= */}
-        {view === "pulse" && (
-          <PulseView projectSlice={projectSlice} addToast={addToast} mobile={mobile} tablet={tablet} />
+        {view === "pulse" && user?.role === "pm" && (
+          <PulseView projectSlice={projectSlice} addToast={addToast} mobile={mobile} tablet={tablet} user={user} />
         )}
 
         {/* ========= PM OPERATIONS (Delivery + Risks + Teams) ========= */}
         {view === "operations" && (
-          <OperationsView addToast={addToast} mobile={mobile} tablet={tablet} />
+          <OperationsView addToast={addToast} mobile={mobile} tablet={tablet} user={user} />
         )}
 
         {/* ================= PM BUSINESS ================= */}
-        {view === "business" && (
+        {view === "business" && user?.role === "pm" && (
           <BusinessView addToast={addToast} mobile={mobile} tablet={tablet} />
+        )}
+
+        {/* ================= TEAM MEMBERS ================= */}
+        {view === "team" && (
+          <TeamMembersView addToast={addToast} mobile={mobile} tablet={tablet} user={user} />
         )}
 
         {/* ================= PM CLIENT REQUESTS ================= */}

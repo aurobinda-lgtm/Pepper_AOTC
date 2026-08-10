@@ -1,7 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
 import { INK, SURFACE, PANEL, GRAY, GRAY2, LINE, OK, OK_BG, WARN, WARN_BG, RISK, RISK_BG, ff, mono } from "../brand/tokens.js";
-import { CUSTOMER_METRICS, PRODUCT_USAGE, BUSINESS_METRICS, BUDGET } from "../data/pm_seed.js";
+import {
+  useCustomerMetrics, useProductUsage, useBusinessMetrics, useBudget,
+  updateCustomerMetrics, updateProductUsage, updateBusinessMetrics, updateBudget,
+} from "../lib/queries.js";
+
+const EMPTY_CUSTOMER_METRICS = { openTickets:null, criticalIssues:null, slaBreaches:null, featureRequests:null, highRiskAccounts:null, csat:null, accounts:[] };
+const EMPTY_BUSINESS_METRICS = { arr:null, mrr:null, mrrGrowth:null, churn:null, newCustomers:null, trialToPaid:null, renewalRisk:null, nps:null };
 
 const fmt  = (n) => n == null ? "—" : n >= 100000 ? `₹${(n/100000).toFixed(1)}L` : `₹${(n/1000).toFixed(0)}K`;
 const fmtC = (n) => n.toLocaleString("en-IN");
@@ -96,15 +102,16 @@ export default function BusinessView({ addToast = () => {}, mobile, tablet }) {
   const [openFeat,   setOpenFeat]   = useState(null);
   const [openBudget, setOpenBudget] = useState(null);
 
+  const { data: customerData }  = useCustomerMetrics();
+  const { data: businessData }  = useBusinessMetrics();
+  const PRODUCT_USAGE = useProductUsage().data ?? [];
+  const BUDGET         = useBudget().data ?? [];
+  const CUSTOMER_METRICS = customerData ?? EMPTY_CUSTOMER_METRICS;
+  const BUSINESS_METRICS = businessData ?? EMPTY_BUSINESS_METRICS;
+
   /* ── Customer metrics editable ── */
-  const [custVals, setCustVals] = useState({
-    openTickets:     CUSTOMER_METRICS.openTickets,
-    criticalIssues:  CUSTOMER_METRICS.criticalIssues,
-    slaBreaches:     CUSTOMER_METRICS.slaBreaches,
-    featureRequests: CUSTOMER_METRICS.featureRequests,
-    highRiskAccounts:CUSTOMER_METRICS.highRiskAccounts,
-    csat:            CUSTOMER_METRICS.csat,
-  });
+  const [custVals, setCustVals] = useState(EMPTY_CUSTOMER_METRICS);
+  useEffect(() => { if (customerData) setCustVals(customerData); }, [customerData]);
   const [editingCust, setEditingCust] = useState(null);
   const [custDraft,   setCustDraft]   = useState("");
 
@@ -114,19 +121,14 @@ export default function BusinessView({ addToast = () => {}, mobile, tablet }) {
     if (isNaN(raw)) { setEditingCust(null); return; }
     setCustVals(v => ({ ...v, [m.key]: raw }));
     setEditingCust(null);
+    updateCustomerMetrics({ [m.key]: raw });
     const disp = m.isPercent ? `${raw}%` : raw;
     addToast(`✓ ${m.label} updated to ${disp}`);
   }
 
   /* ── Business metrics editable ── */
-  const [metricVals,    setMetricVals]    = useState({
-    arr: BUSINESS_METRICS.arr ?? null,
-    mrr: BUSINESS_METRICS.mrr ?? null,
-    churn: BUSINESS_METRICS.churn ?? null,
-    trialToPaid: BUSINESS_METRICS.trialToPaid ?? null,
-    renewalRisk: BUSINESS_METRICS.renewalRisk ?? null,
-    nps: BUSINESS_METRICS.nps ?? null,
-  });
+  const [metricVals, setMetricVals] = useState(EMPTY_BUSINESS_METRICS);
+  useEffect(() => { if (businessData) setMetricVals(businessData); }, [businessData]);
   const [editingMetric, setEditingMetric] = useState(null);
   const [metricDraft,   setMetricDraft]   = useState("");
 
@@ -136,6 +138,7 @@ export default function BusinessView({ addToast = () => {}, mobile, tablet }) {
     if (isNaN(raw)) { setEditingMetric(null); return; }
     setMetricVals(v => ({ ...v, [m.key]: raw }));
     setEditingMetric(null);
+    updateBusinessMetrics({ [m.key]: raw });
     addToast(`✓ ${m.label} updated to ${fmtMetric(m, raw)}`);
   }
 
@@ -143,6 +146,7 @@ export default function BusinessView({ addToast = () => {}, mobile, tablet }) {
   const [usageEdits, setUsageEdits] = useState({}); // { [feature]: { adoption?, target?, dau? } }
   function patchUsage(feature, field, val) {
     setUsageEdits(u => ({ ...u, [feature]: { ...(u[feature]||{}), [field]: val } }));
+    updateProductUsage(feature, { [field]: val });
     addToast(`✓ ${feature} — ${field} updated to ${field==="dau" ? fmtC(val) : val+"%"}`);
   }
 
@@ -150,6 +154,7 @@ export default function BusinessView({ addToast = () => {}, mobile, tablet }) {
   const [budgetEdits, setBudgetEdits] = useState({}); // { [team]: { planned?, actual? } }
   function patchBudget(team, field, val) {
     setBudgetEdits(b => ({ ...b, [team]: { ...(b[team]||{}), [field]: val } }));
+    updateBudget(team, { [field]: val });
     addToast(`✓ ${team} — ${field} updated to ${fmt(val)}`);
   }
   function bVal(team, field) {

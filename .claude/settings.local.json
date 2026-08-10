@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "mcp__8243a96e-f5d1-4e4d-bc5a-9e7d1a17a76b__clickup_filter_tasks"
+      "mcp__8243a96e-f5d1-4e4d-bc5a-9e7d1a17a76b__clickup_filter_tasks",
+      "mcp__claude_ai_ClickUp__clickup_filter_tasks",
+      "Bash(npm run *)",
+      "Bash(grep *)",
+      "Bash(git add *)"
     ]
   }
 }
