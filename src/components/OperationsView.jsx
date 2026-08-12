@@ -4,16 +4,20 @@ import Celebration from "./Celebration.jsx";
 import TaskDetailExtras from "./TaskDetailExtras.jsx";
 import BoardView from "./BoardView.jsx";
 import { getProfile } from "../lib/session.js";
+import { SUPABASE_CONFIGURED } from "../lib/supabaseClient.js";
 import { scopeByProject, ALL_PROJECTS } from "../lib/access.js";
 import { getScopeProjects } from "../lib/localDirectory.js";
 import { awardPoints } from "../lib/gamification.js";
 import AddTaskForm from "./AddTaskForm.jsx";
+import TaskEditForm from "./TaskEditForm.jsx";
+import SimpleAddForm from "./SimpleAddForm.jsx";
 import { INK, SURFACE, PANEL, GRAY, GRAY2, LINE, OK, OK_BG, WARN, WARN_BG, RISK, RISK_BG, ff, mono } from "../brand/tokens.js";
 import {
   useFeatures, useReleases, useCurrentSprint,
   useBlockers, useRisks, useBugs, useBugTrend,
   useTeamCapacity, useDecisions, useHealthMatrix,
   updateTask, updateRelease, updateSprintItem, resolveBlocker, resolveBug, closeDecision, setRiskMitigated,
+  createBlocker, createRisk, createDecision,
 } from "../lib/queries.js";
 
 const EMPTY_SPRINT = { name:"", startDate:"", endDate:"", velocity:null, items:[] };
@@ -103,6 +107,7 @@ export default function OperationsView({ addToast, mobile, tablet, user }) {
   const [relCheck,     setRelCheck]  = useState({});      // `${relId}.${key}` → bool override
   const [risksDone,    setRisksDone] = useState(new Set());
   const [bugFilter,    setBugFilter] = useState(null);    // null | "P0".."P3"
+  const [editingBug,   setEditingBug] = useState(null);   // bug id currently showing the edit form
   const [openFeat,     setOpenFeat] = useState(null);
   const [roadmapView,  setRoadmapView] = useState("table"); // "table" | "board"
   const [featEdits,    setFeatEdits] = useState({});   // id → partial field overrides
@@ -111,7 +116,12 @@ export default function OperationsView({ addToast, mobile, tablet, user }) {
   const patchFeat  = (id, patch) => setFeatEdits(o => ({ ...o, [id]: { ...(o[id]||{}), ...patch } }));
 
   const [currentProfile, setCurrentProfile] = useState(null);
-  useEffect(() => { getProfile().then(setCurrentProfile); }, []);
+  useEffect(() => {
+    // Comments need someone to attribute to — use the real Supabase profile
+    // once connected, otherwise fall back to whoever's signed in locally.
+    if (SUPABASE_CONFIGURED) getProfile().then(setCurrentProfile);
+    else if (user) setCurrentProfile({ id: user.name, name: user.name });
+  }, [user]);
 
   /* ── live data, scoped to the signed-in user's space (PM sees everything) ── */
   const { data: featuresData, refetch: refetchFeatures } = useFeatures();
@@ -692,6 +702,21 @@ export default function OperationsView({ addToast, mobile, tablet, user }) {
                           color:GRAY, fontFamily:mono, marginBottom:14 }}>
               Active Blockers — {openBlockers.length} open
             </div>
+            <SimpleAddForm
+              label="Add blocker" mobile={mobile}
+              fields={[
+                { key:"title", placeholder:"What's blocked?", required:true },
+                { key:"project", type:"select", options:projectOptions, default: projectOptions[0] ?? "" },
+                { key:"owner", placeholder:"Owner" },
+                { key:"impact", type:"select", options:["high","medium","low"], default:"medium" },
+                { key:"dueDate", type:"date" },
+              ]}
+              onSubmit={async (v) => {
+                await createBlocker({ project: v.project || null, title: v.title.trim(), owner: v.owner.trim() || null, impact: v.impact, dueDate: v.dueDate || null });
+                addToast(`✓ Blocker "${v.title.trim()}" added`);
+                refetchBlockers();
+              }}
+            />
             {openBlockers.map((b,i) => (
               <div key={b.id} style={{ padding:"12px 0", borderBottom: i<openBlockers.length-1?`1px solid ${PANEL}`:"none" }}>
                 <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
@@ -728,6 +753,22 @@ export default function OperationsView({ addToast, mobile, tablet, user }) {
           <div style={{ background:SURFACE, border:`1.5px solid ${LINE}`, borderRadius:18, padding:"18px 20px" }}>
             <div style={{ fontSize:11, fontWeight:700, letterSpacing:1, textTransform:"uppercase",
                           color:GRAY, fontFamily:mono, marginBottom:14 }}>Top {RISKS.length} Risks</div>
+            <SimpleAddForm
+              label="Add risk" mobile={mobile}
+              fields={[
+                { key:"title", placeholder:"Risk description", required:true },
+                { key:"project", type:"select", options:projectOptions, default: projectOptions[0] ?? "" },
+                { key:"probability", type:"select", options:["high","medium","low"], default:"medium" },
+                { key:"impact", type:"select", options:["high","medium","low"], default:"medium" },
+                { key:"owner", placeholder:"Owner" },
+                { key:"mitigation", placeholder:"Mitigation plan" },
+              ]}
+              onSubmit={async (v) => {
+                await createRisk({ project: v.project || null, title: v.title.trim(), probability: v.probability, impact: v.impact, owner: v.owner.trim() || null, mitigation: v.mitigation.trim() || null });
+                addToast(`✓ Risk "${v.title.trim()}" added`);
+                refetchRisks();
+              }}
+            />
             {RISKS.map((r,i) => {
               const mitigated = risksDone.has(r.id) || r.mitigated;
               return (
@@ -817,26 +858,43 @@ export default function OperationsView({ addToast, mobile, tablet, user }) {
           {openBugs.filter(b => !bugFilter || b.priority===bugFilter).map((b,i,arr) => {
             const col = b.priority==="P0"?RISK:b.priority==="P1"?WARN:b.priority==="P2"?GRAY2:GRAY;
             return (
-              <div key={b.id} style={{ display:"grid",
-                gridTemplateColumns:"60px 2fr 1fr 1fr 1fr 140px", gap:12,
-                padding:"12px 20px", alignItems:"center",
-                borderBottom: i<arr.length-1?`1px solid ${PANEL}`:"none",
-                background: b.priority==="P0" ? `${RISK}06` : "transparent" }}>
-                <span style={{ fontSize:11, fontWeight:900, color:col, fontFamily:mono }}>{b.priority}</span>
-                <span style={{ fontSize:13, fontWeight:600, color:INK }}>{b.title}</span>
-                <span style={{ fontSize:12, color:GRAY2 }}>{b.project}</span>
-                <span style={{ fontSize:12, color:GRAY2 }}>{b.assignee}</span>
-                <span style={{ fontSize:12, fontFamily:mono, color:b.openedDays>7?RISK:GRAY2 }}>{b.openedDays}d</span>
-                <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-                  <button onClick={()=>resolveBugItem(b)}
-                    style={{ fontSize:11, padding:"4px 10px", borderRadius:8,
-                             border:`1px solid ${LINE}`, background:SURFACE, color:GRAY2,
-                             cursor:"pointer", fontFamily:ff }}>Resolve</button>
-                  <button onClick={()=>addToast(`🔔 ${b.assignee} nudged about "${b.title}"`)}
-                    style={{ fontSize:11, padding:"4px 10px", borderRadius:8,
-                             border:`1px solid ${LINE}`, background:SURFACE, color:GRAY2,
-                             cursor:"pointer", fontFamily:ff }}>Nudge</button>
+              <div key={b.id} style={{ borderBottom: i<arr.length-1?`1px solid ${PANEL}`:"none" }}>
+                <div style={{ display:"grid",
+                  gridTemplateColumns:"60px 2fr 1fr 1fr 1fr 140px", gap:12,
+                  padding:"12px 20px", alignItems:"center",
+                  background: b.priority==="P0" ? `${RISK}06` : "transparent" }}>
+                  <span style={{ fontSize:11, fontWeight:900, color:col, fontFamily:mono }}>{b.priority}</span>
+                  <span style={{ fontSize:13, fontWeight:600, color:INK }}>{b.title}</span>
+                  <span style={{ fontSize:12, color:GRAY2 }}>{b.project}</span>
+                  <span style={{ fontSize:12, color:GRAY2 }}>{b.assignee}</span>
+                  <span style={{ fontSize:12, fontFamily:mono, color:b.openedDays>7?RISK:GRAY2 }}>{b.openedDays}d</span>
+                  <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
+                    <button onClick={()=>resolveBugItem(b)}
+                      style={{ fontSize:11, padding:"4px 10px", borderRadius:8,
+                               border:`1px solid ${LINE}`, background:SURFACE, color:GRAY2,
+                               cursor:"pointer", fontFamily:ff }}>Resolve</button>
+                    <button onClick={()=>addToast(`🔔 ${b.assignee} nudged about "${b.title}"`)}
+                      style={{ fontSize:11, padding:"4px 10px", borderRadius:8,
+                               border:`1px solid ${LINE}`, background:SURFACE, color:GRAY2,
+                               cursor:"pointer", fontFamily:ff }}>Nudge</button>
+                    <button onClick={()=>setEditingBug(editingBug===b.id?null:b.id)}
+                      style={{ fontSize:11, padding:"4px 10px", borderRadius:8,
+                               border:`1px solid ${LINE}`, background: editingBug===b.id?PANEL:SURFACE, color:GRAY2,
+                               cursor:"pointer", fontFamily:ff }}>{editingBug===b.id ? "Close" : "Edit"}</button>
+                  </div>
                 </div>
+                {editingBug === b.id && (
+                  <div style={{ padding:"0 20px 16px" }}>
+                    <TaskEditForm
+                      task={{ id:b.id, name:b.title, owner:b.assignee, status:b.status, priority:b.priority, health:b.health, blocked:b.blocked, risk:b.risk }}
+                      statusOptions={[{ value:"open", label:"Open" }, { value:"resolved", label:"Resolved" }]}
+                      addToast={addToast}
+                      mobile={mobile}
+                      onCancel={()=>setEditingBug(null)}
+                      onSaved={()=>{ setEditingBug(null); refreshAllTaskViews(); }}
+                    />
+                  </div>
+                )}
               </div>
             );
           })}
@@ -938,6 +996,21 @@ export default function OperationsView({ addToast, mobile, tablet, user }) {
       <section ref={refs.decisions} style={{ marginBottom:20, scrollMarginTop:80 }}>
         <SectionHead icon="⏳" title="Decisions Tracker"
           sub={`${pendingDec.length} pending stakeholder decisions`} />
+        <SimpleAddForm
+          label="Add decision" mobile={mobile}
+          fields={[
+            { key:"title", placeholder:"What needs deciding?", required:true },
+            { key:"project", type:"select", options:projectOptions, default: projectOptions[0] ?? "" },
+            { key:"owner", placeholder:"Owner" },
+            { key:"impact", type:"select", options:["high","medium","low"], default:"medium" },
+            { key:"dueDate", type:"date" },
+          ]}
+          onSubmit={async (v) => {
+            await createDecision({ project: v.project || null, title: v.title.trim(), owner: v.owner.trim() || null, impact: v.impact, dueDate: v.dueDate || null });
+            addToast(`✓ Decision "${v.title.trim()}" added`);
+            refetchDecisions();
+          }}
+        />
         <div style={{ display:"grid", gridTemplateColumns:mobile?"1fr":tablet?"1fr 1fr":"repeat(auto-fill,minmax(280px,1fr))", gap:12 }}>
           {DECISIONS.map(d => {
             const resolved = decDone.has(d.id);

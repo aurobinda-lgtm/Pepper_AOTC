@@ -15,6 +15,7 @@ const inp = {
 export default function AddTaskForm({
   type = "feature",           // "feature" | "bug"
   defaultStatus,
+  defaultCategory = "general",
   projectOptions = [],
   sprintId,                   // when set, also links the new task into this sprint
   onCreated,
@@ -27,13 +28,14 @@ export default function AddTaskForm({
   const [owner, setOwner] = useState("");
   const [targetDate, setTargetDate] = useState("");
   const [priority, setPriority] = useState("P2");
+  const [category, setCategory] = useState(defaultCategory);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
   const label = type === "bug" ? "bug" : "task";
   const status = defaultStatus ?? (type === "bug" ? "open" : "not_started");
 
-  const reset = () => { setName(""); setOwner(""); setTargetDate(""); setPriority("P2"); setError(""); };
+  const reset = () => { setName(""); setOwner(""); setTargetDate(""); setPriority("P2"); setCategory(defaultCategory); setError(""); };
 
   const submit = async (e) => {
     e.preventDefault();
@@ -42,7 +44,7 @@ export default function AddTaskForm({
     setError("");
     const { data, error: createErr } = await createTask({
       project: project || null, name: name.trim(), type, status,
-      owner: owner.trim() || null, targetDate: targetDate || null, priority,
+      owner: owner.trim() || null, targetDate: targetDate || null, priority, category,
       health: "yellow", openedDays: type === "bug" ? 0 : null,
     });
     if (createErr) { setSubmitting(false); setError(createErr.message || `Could not create the ${label}.`); return; }
@@ -76,9 +78,12 @@ export default function AddTaskForm({
           {["P0","P1","P2","P3"].map(p => <option key={p} value={p}>{p}</option>)}
         </select>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "1fr 1fr", gap: "10px 12px", marginBottom: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "1fr 1fr 1fr", gap: "10px 12px", marginBottom: 10 }}>
         <input value={owner} onChange={e => setOwner(e.target.value)} placeholder="Owner (optional)" style={inp} />
         {type !== "bug" && <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)} style={inp} />}
+        <select value={category} onChange={e => setCategory(e.target.value)} style={inp}>
+          {["general","design","dev","marketing","consulting"].map(c => <option key={c} value={c}>{c[0].toUpperCase()+c.slice(1)}</option>)}
+        </select>
       </div>
       {error && <div style={{ fontSize: 11.5, color: "#C0392B", fontWeight: 600, marginBottom: 8 }}>{error}</div>}
       <div style={{ display: "flex", gap: 8 }}>

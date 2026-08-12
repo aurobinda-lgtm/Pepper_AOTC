@@ -15,6 +15,9 @@ import PulseView    from "./components/PulseView.jsx";
 import OperationsView from "./components/OperationsView.jsx";
 import BusinessView from "./components/BusinessView.jsx";
 import TeamMembersView from "./components/TeamMembersView.jsx";
+import CeoView from "./components/CeoView.jsx";
+import DesignHubView from "./components/DesignHubView.jsx";
+import ExecutiveView from "./components/ExecutiveView.jsx";
 import { getStats, BADGE_DEFS } from "./lib/gamification.js";
 
 /* ---- Pepper avatar image data ---- */
@@ -1100,6 +1103,9 @@ export default function Dashboard() {
     view === "operations"        ? "Operations Command Center" :
     view === "business"          ? "Business Intelligence" :
     view === "team"              ? "Team Members" :
+    view === "ceo-command"       ? "Command" :
+    view === "design-hub"        ? "Design Hub" :
+    view === "exec-command"      ? "Executive" :
     view === "requests"          ? "Client Requests" :
     view === "client-overview"   ? `Welcome, ${user?.name}` :
     view === "client-requests"   ? "Your Requests" : "Art of Tech";
@@ -1116,6 +1122,9 @@ export default function Dashboard() {
     view === "operations" ? "Roadmap · sprint · releases · blockers · risks · bugs · capacity · decisions" :
     view === "business"   ? "Customers · product usage · revenue · budget" :
     view === "team"       ? "Manage who can create and edit tasks" :
+    view === "ceo-command"  ? "Invoices · pipeline · team focus · meetings" :
+    view === "design-hub"   ? "All design work, across every project" :
+    view === "exec-command" ? "Company-wide — invoices, pipeline, notes & more" :
     view === "requests"         ? `${clientRequests.filter(r => r.status === "pending").length} pending · ${clientRequests.filter(r => r.status === "accepted").length} accepted · ${clientRequests.filter(r => r.status === "declined").length} declined` :
     view === "client-overview"  ? `${user?.company || ""} · live project status` :
     view === "client-requests"  ? `${clientRequests.filter(r => r.client === user?.company).length} submitted · ${clientRequests.filter(r => r.client === user?.company && r.status === "accepted").length} accepted` : "";
@@ -3504,8 +3513,23 @@ export default function Dashboard() {
         )}
 
         {/* ================= PM BUSINESS ================= */}
-        {view === "business" && user?.role === "pm" && (
+        {view === "business" && (user?.role === "pm" || user?.role === "cto") && (
           <BusinessView addToast={addToast} mobile={mobile} tablet={tablet} />
+        )}
+
+        {/* ================= CEO COMMAND ================= */}
+        {view === "ceo-command" && (user?.role === "pm" || user?.role === "ceo") && (
+          <CeoView addToast={addToast} mobile={mobile} />
+        )}
+
+        {/* ================= DESIGN HUB ================= */}
+        {view === "design-hub" && (user?.role === "pm" || user?.role === "cdo") && (
+          <DesignHubView addToast={addToast} mobile={mobile} user={user} />
+        )}
+
+        {/* ================= EXECUTIVE ================= */}
+        {view === "exec-command" && (user?.role === "pm" || user?.role === "cto") && (
+          <ExecutiveView addToast={addToast} mobile={mobile} user={user} />
         )}
 
         {/* ================= TEAM MEMBERS ================= */}

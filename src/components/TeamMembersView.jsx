@@ -44,6 +44,9 @@ function SpacesChips({ scopeProjects }) {
 
 export default function TeamMembersView({ addToast, mobile, user }) {
   const isPM = user?.role === "pm";
+  // Adding new accounts is restricted to the PM and the COO/operations head (Indranil, role "cto") —
+  // everyone else can still see the roster but not create new logins.
+  const canAddMembers = user?.role === "pm" || user?.role === "cto";
   // eslint-disable-next-line no-unused-vars -- read only to force a re-render after a local-storage write
   const [localTick, setLocalTick] = useState(0);
   const live = useProfiles(); // always called (rules of hooks) — a no-op when Supabase isn't configured
@@ -140,7 +143,7 @@ export default function TeamMembersView({ addToast, mobile, user }) {
             {PROFILES.filter(p => p.active).length} active · {PROFILES.filter(p => !p.active).length} deactivated
           </div>
         </div>
-        {isPM && (
+        {canAddMembers && (
           <button onClick={() => setShowAdd(s => !s)} style={{
             marginLeft: "auto", fontSize: 13, fontWeight: 700, padding: "8px 18px", borderRadius: 12,
             border: "none", background: showAdd ? PANEL : INK, color: showAdd ? GRAY2 : "#fff",
@@ -149,8 +152,8 @@ export default function TeamMembersView({ addToast, mobile, user }) {
         )}
       </div>
 
-      {/* ── add member form (PM only) ── */}
-      {isPM && showAdd && (
+      {/* ── add member form (PM + COO/operations head only) ── */}
+      {canAddMembers && showAdd && (
         <form onSubmit={handleAdd} style={{ background: SURFACE, border: `1.5px solid ${INK}33`, borderRadius: 16,
                                              padding: "16px 18px", marginBottom: 20 }}>
           <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "1fr 1fr 1fr", gap: "12px 16px", marginBottom: 14 }}>
@@ -181,7 +184,7 @@ export default function TeamMembersView({ addToast, mobile, user }) {
       {/* ── member list ── */}
       <div style={{ background: SURFACE, border: `1.5px solid ${LINE}`, borderRadius: 18, overflow: "hidden" }}>
         {PROFILES.length === 0 && (
-          <div style={{ padding: "20px", fontSize: 13, color: GRAY2 }}>No team members yet{isPM ? " — add the first one above." : "."}</div>
+          <div style={{ padding: "20px", fontSize: 13, color: GRAY2 }}>No team members yet{canAddMembers ? " — add the first one above." : "."}</div>
         )}
         {PROFILES.map((p, i) => (
           <div key={p.id} style={{ borderBottom: i < PROFILES.length - 1 ? `1px solid ${PANEL}` : "none" }}>

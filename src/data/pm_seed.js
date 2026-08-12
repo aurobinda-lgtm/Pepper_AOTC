@@ -20,7 +20,7 @@
 export const FEATURES = [
   // MUWCI Website (active — go-live milestone slipped, but a burst of progress today)
   { id:"muwci-api",          name:"APIs & Database Integration",         project:"MUWCI",      status:"delayed",     owner:"Jyoti Shid",              targetDate:"2026-06-07", risk:"58 days overdue",           health:"red",    priority:"P0", blocked:true,  clickupId:"86d2zwnt6" },
-  { id:"muwci-pages",        name:"Pages & Frontend",                    project:"MUWCI",      status:"delayed",     owner:"Mahesh Pawar",            targetDate:"2026-06-10", risk:"55 days overdue",           health:"red",    priority:"P0", blocked:true,  clickupId:"86d2zwp0k" },
+  { id:"muwci-pages",        name:"Pages & Frontend",                    project:"MUWCI",      status:"delayed",     owner:"Mahesh Pawar",            targetDate:"2026-06-10", risk:"55 days overdue",           health:"red",    priority:"P0", blocked:true,  clickupId:"86d2zwp0k", category:"design" },
   { id:"muwci-reqs",         name:"Product Requirement",                 project:"MUWCI",      status:"delayed",     owner:"Caryn Putman",            targetDate:"2026-06-04", risk:"61 days overdue",           health:"red",    priority:"P1", blocked:false, clickupId:"86d2zwnnu" },
   { id:"muwci-testing",      name:"Internal Testing",                    project:"MUWCI",      status:"delayed",     owner:"Caryn Putman / Indranil", targetDate:"2026-07-07", risk:"28 days overdue — blocks QA sign-off", health:"red", priority:"P1", blocked:true, clickupId:"86d2zvhtp" },
   { id:"muwci-donation",     name:"Donation Pages",                      project:"MUWCI",      status:"delayed",     owner:"Unassigned",              targetDate:"2026-07-02", risk:"33 days overdue",           health:"red",    priority:"P2", blocked:false, clickupId:"86d2zwnmw" },
@@ -49,7 +49,7 @@ export const FEATURES = [
 
   // UFO / Aurora Cinema Suite (new cluster — not in prior sync)
   { id:"ufo-aurora-cineselect", name:"Cinema Selection Flow (Plexiads → Spotlight)", project:"UFO Aurora", status:"in_progress", owner:"Jeetendra Chandragiri", targetDate:"2026-08-04", risk:"Due today", health:"yellow", priority:"P1", blocked:false, clickupId:"86d3vbqt7" },
-  { id:"ufo-aurora-fanfare", name:"Fanfare App Screens",                 project:"UFO Aurora", status:"in_progress", owner:"Jeetendra Chandragiri",   targetDate:"2026-08-04", risk:"Due today",                 health:"yellow", priority:"P1", blocked:false, clickupId:"86d3vbpze" },
+  { id:"ufo-aurora-fanfare", name:"Fanfare App Screens",                 project:"UFO Aurora", status:"in_progress", owner:"Jeetendra Chandragiri",   targetDate:"2026-08-04", risk:"Due today",                 health:"yellow", priority:"P1", blocked:false, clickupId:"86d3vbpze", category:"design" },
   { id:"ufo-aurora-sms",     name:"Aurora SMS Integration",              project:"UFO Aurora", status:"not_started", owner:"Jeetendra Chandragiri",   targetDate:null,         risk:"No date set",               health:"yellow", priority:"P2", blocked:false, clickupId:"86d3vc05j" },
 
   // Carer
@@ -65,7 +65,7 @@ export const FEATURES = [
 
   // VIBE (new project space)
   { id:"vibe-app",           name:"VIBE App Development",                project:"VIBE",       status:"not_started", owner:"Mahesh / Indranil / Caryn / Auro", targetDate:null, risk:"No dates set — early discovery", health:"yellow", priority:"P2", blocked:false, clickupId:"86d3jpytz" },
-  { id:"vibe-screens",       name:"Basic Screens for VIBE",              project:"VIBE",       status:"not_started", owner:"Mahesh Pawar",            targetDate:null,         risk:"No date set",               health:"yellow", priority:"P3", blocked:false, clickupId:"86d3jq11d" },
+  { id:"vibe-screens",       name:"Basic Screens for VIBE",              project:"VIBE",       status:"not_started", owner:"Mahesh Pawar",            targetDate:null,         risk:"No date set",               health:"yellow", priority:"P3", blocked:false, clickupId:"86d3jq11d", category:"design" },
 
   // NAIN (new project space — empty backlog)
   { id:"nain-placeholder",   name:"NAIN — no tasks logged yet",          project:"NAIN",       status:"not_started", owner:"Unassigned",              targetDate:null,         risk:"New space, empty backlog",  health:"yellow", priority:"P3", blocked:false },

@@ -69,6 +69,7 @@ create table if not exists tasks (
   risk_note   text,
   blocked     boolean not null default false,
   opened_days int,                                      -- bug age in days, manually tracked (mirrors old BUGS.openedDays)
+  category   text default 'general',                    -- design/dev/marketing/consulting/general — lets a discipline be viewed across every project
   sort_order  int,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
@@ -267,6 +268,60 @@ do $$ begin
   alter table tasks add constraint tasks_list_id_fkey foreign key (list_id) references lists(id) on delete set null;
 exception when duplicate_object then null; end $$;
 
+-- ─── EXECUTIVE MODULES: invoices, pipeline, meetings, notes ────────────────
+-- Manual-entry for now (no accounting/CRM tool connected), but field names
+-- follow real-tool conventions (QuickBooks/Zoho Books; HubSpot deals) so a
+-- later integration is a drop-in. See src/lib/execData.js for the active
+-- (currently local-storage) implementation.
+
+create table if not exists invoices (
+  id          uuid primary key default gen_random_uuid(),
+  client      text not null,
+  project     text,
+  amount      numeric not null default 0,
+  currency    text not null default 'INR',
+  issue_date  date,
+  due_date    date,
+  paid_date   date,
+  status      text not null default 'sent' check (status in ('draft','sent','paid','overdue','void')),
+  notes       text,
+  created_at  timestamptz not null default now()
+);
+
+create table if not exists opportunities (
+  id         uuid primary key default gen_random_uuid(),
+  name       text not null,
+  company    text,
+  type       text not null default 'new_client' check (type in ('new_client','upsell')),
+  stage      text not null default 'lead' check (stage in ('lead','contacted','proposal','negotiation','won','lost')),
+  amount     numeric,
+  owner      text,
+  close_date date,
+  notes      text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists meetings (
+  id            uuid primary key default gen_random_uuid(),
+  title         text not null,
+  date          date not null,
+  attendees     text[],
+  project       text,
+  notes         text,              -- empty = upcoming reminder, filled = a logged past meeting
+  action_items  jsonb default '[]',
+  created_at    timestamptz not null default now()
+);
+
+create table if not exists notes (
+  id         uuid primary key default gen_random_uuid(),
+  title      text not null,
+  project    text,
+  category   text not null default 'general' check (category in ('product','plan','general')),
+  body       text,
+  author     text,
+  created_at timestamptz not null default now()
+);
+
 -- ─── ROW LEVEL SECURITY ─────────────────────────────────────────────────────
 -- Read: anyone with the anon key (matches today's actual security level —
 -- the existing PIN check is client-side only). Write: only signed-in profiles.
@@ -284,7 +339,7 @@ begin
     'decisions','blockers','team_capacity','health_matrix','bug_trend',
     'customer_metrics','customer_accounts','product_usage','business_metrics','budget',
     'task_comments','tags','task_tags','task_checklist_items','spaces','folders','lists',
-    'gamification_events'
+    'gamification_events','invoices','opportunities','meetings','notes'
   ])
   loop
     execute format('alter table %I enable row level security', t);

@@ -83,14 +83,32 @@ export function can(user, action) {
 export function navFor(user) {
   if (user.role === "pm") {
     return [
-      { key: "pulse",      label: "Pulse",      icon: "◉" },
+      { key: "pulse",        label: "Pulse",      icon: "◉" },
+      { key: "operations",   label: "Operations", icon: "◫" },
+      { key: "business",     label: "Business",   icon: "$" },
+      { key: "ceo-command",  label: "Command",    icon: "⌂" },
+      { key: "design-hub",   label: "Design Hub", icon: "🎨" },
+      { key: "exec-command", label: "Executive",  icon: "🧭" },
+      { key: "requests",     label: "Requests",   icon: "↓" },
+      { key: "team",         label: "Team",       icon: "◈" },
+    ];
+  }
+  if (user.role === "cto") {
+    return [
+      { key: "operations",   label: "Operations", icon: "◫" },
+      { key: "exec-command", label: "Executive",  icon: "🧭" },
+      { key: "business",     label: "Business",   icon: "$" },
+      { key: "team",         label: "Team",       icon: "◈" },
+    ];
+  }
+  if (user.role === "cdo") {
+    return [
       { key: "operations", label: "Operations", icon: "◫" },
-      { key: "business",   label: "Business",   icon: "$" },
-      { key: "requests",   label: "Requests",   icon: "↓" },
+      { key: "design-hub", label: "Design Hub", icon: "🎨" },
       { key: "team",       label: "Team",       icon: "◈" },
     ];
   }
-  if (user.role === "cto" || user.role === "cdo" || user.role === "delivery") {
+  if (user.role === "delivery") {
     return [
       { key: "operations", label: "Operations", icon: "◫" },
       { key: "team",       label: "Team",       icon: "◈" },
@@ -98,9 +116,10 @@ export function navFor(user) {
   }
   if (user.role === "ceo") {
     return [
-      { key: "ceo",           label: "Command",   icon: "⌂" },
-      { key: "ceo-portfolio", label: "Portfolio", icon: "◫" },
-      { key: "atrisk",        label: "At Risk",   icon: "⚑" },
+      { key: "ceo-command",   label: "Command",       icon: "⌂" },
+      { key: "ceo",           label: "Legacy Demo",   icon: "⌂" },
+      { key: "ceo-portfolio", label: "Portfolio",     icon: "◫" },
+      { key: "atrisk",        label: "At Risk",       icon: "⚑" },
     ];
   }
   if (user.role === "client") {
@@ -123,7 +142,7 @@ export function navFor(user) {
 export function landingFor(user) {
   if (user.role === "pm")     return "pulse";
   if (user.role === "cto" || user.role === "cdo" || user.role === "delivery") return "operations";
-  if (user.role === "ceo")    return "ceo";
+  if (user.role === "ceo")    return "ceo-command";
   if (user.role === "client") return "client-overview";
   return "inbox";
 }

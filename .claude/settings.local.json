@@ -5,7 +5,17 @@
       "mcp__claude_ai_ClickUp__clickup_filter_tasks",
       "Bash(npm run *)",
       "Bash(grep *)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(gh auth *)",
+      "Read(//Users/aurobindakhuntia/**)",
+      "Bash(command -v gh)",
+      "Read(//usr/local/bin/**)",
+      "Read(//opt/homebrew/bin/**)",
+      "Read(//usr/local/**)",
+      "Bash(pkgutil --pkgs)",
+      "Bash(pkill -f \"gh auth login\")"
     ]
   }
 }
