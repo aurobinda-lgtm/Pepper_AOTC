@@ -16,7 +16,38 @@
 // Financial metrics (ARR, MRR, CSAT, Budget) are not tracked in ClickUp —
 // fill those manually in the sections marked ⚠️ MANUAL.
 
-// ─── PROJECTS / FEATURES ──────────────────────────────────────────────────────
+// ─── PROJECTS ──────────────────────────────────────────────────────────────
+// Mirrors the 0002 migration's seed rows 1:1 — used by localStore.js when
+// Supabase isn't configured. `health` is a starting rollup from the FEATURES/
+// BUGS below at sync time; client/company come from CUSTOMER_METRICS.accounts.
+// milestone/due/notes are left null — no ClickUp field maps to them yet.
+export const PROJECTS = [
+  { id:"muwci",      name:"MUWCI",        client:"MUWCI (UWC)",    company:"aot", health:"red",    milestone:null, due:null, notes:null, accountId:"acct-muwci" },
+  { id:"venuesage",  name:"VenueSage",    client:"VenueSage",      company:"aot", health:"red",    milestone:null, due:null, notes:null, accountId:null },
+  { id:"ufobuzz",    name:"UFO Buzz",     client:"UFO (Sanjay G.)",company:"aot", health:"green",  milestone:null, due:null, notes:null, accountId:"acct-ufo" },
+  { id:"ufoemotive", name:"UFO Emotive",  client:"UFO (Sanjay G.)",company:"aot", health:"yellow", milestone:null, due:null, notes:null, accountId:"acct-ufo" },
+  { id:"ufoaurora",  name:"UFO Aurora",   client:"UFO (Sanjay G.)",company:"aot", health:"yellow", milestone:null, due:null, notes:null, accountId:"acct-ufo" },
+  { id:"carer",      name:"Carer",        client:"Carer (Samara)", company:"aot", health:"yellow", milestone:null, due:null, notes:null, accountId:"acct-carer" },
+  { id:"campusos",   name:"Campus OS",    client:null,             company:"aot", health:"yellow", milestone:null, due:null, notes:null, accountId:null },
+  { id:"aotc-web",   name:"AOTC Website", client:"Internal",       company:"aot", health:"red",    milestone:null, due:null, notes:null, accountId:null },
+  { id:"vibe",       name:"VIBE",         client:null,             company:"aot", health:"yellow", milestone:null, due:null, notes:null, accountId:null },
+  { id:"nain",       name:"NAIN",         client:null,             company:"aot", health:"yellow", milestone:null, due:null, notes:null, accountId:null },
+];
+
+// ─── ACCOUNTS ──────────────────────────────────────────────────────────────
+// The CRM customer/company object — distinct from the legacy name-keyed
+// CUSTOMER_METRICS.accounts below (which stays as the Business view's simple
+// ticket/MRR metrics table). GDL and MovieBeam have no active project right
+// now (dormant per the sync notes above), which is real, not a seeding gap.
+export const ACCOUNTS = [
+  { id:"acct-muwci",     name:"MUWCI (UWC)",      domain:null, notes:null },
+  { id:"acct-carer",     name:"Carer (Samara)",   domain:null, notes:null },
+  { id:"acct-gdl",       name:"GDL (Gilani's)",   domain:null, notes:null },
+  { id:"acct-ufo",       name:"UFO (Sanjay G.)",  domain:null, notes:null },
+  { id:"acct-moviebeam", name:"MovieBeam (Ankur)",domain:null, notes:null },
+];
+
+// ─── FEATURES ──────────────────────────────────────────────────────────────
 export const FEATURES = [
   // MUWCI Website (active — go-live milestone slipped, but a burst of progress today)
   { id:"muwci-api",          name:"APIs & Database Integration",         project:"MUWCI",      status:"delayed",     owner:"Jyoti Shid",              targetDate:"2026-06-07", risk:"58 days overdue",           health:"red",    priority:"P0", blocked:true,  clickupId:"86d2zwnt6" },

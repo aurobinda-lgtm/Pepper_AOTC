@@ -1,7 +1,11 @@
-// Login roster.
-// The 7 "writeAccess" profiles (pm/cto/cdo/delivery) sign in with a real
-// Supabase account (email + password) — see AccessGate.jsx. CEO + clients
-// keep the original PIN-picker flow untouched.
+// Local-dev-only persona list. Used ONLY when Supabase isn't configured
+// (see AccessGate.jsx / supabaseClient.js's SUPABASE_CONFIGURED) — there's
+// no real backend to authenticate against in that mode, so AccessGate lets a
+// developer click to continue as one of these instead of entering a
+// password. This is NOT a security mechanism (no PINs, nothing secret) and
+// is never used once Supabase is configured: real sign-in goes through
+// Supabase Auth directly, and org membership/role comes from
+// `organization_members`, not this file.
 
 export const USERS = [
   {
@@ -88,57 +92,17 @@ export const USERS = [
     role:     "ceo",
     initials: "AM",
     email:    "amit@artoftech.in",
-    pin:      "3333",
     projects: null,
   },
-  // ── Client accounts ──
-  {
-    id:       "cl1",
-    name:     "Sarah",
-    role:     "client",
-    initials: "SI",
-    email:    "sarah@starlightinc.com",
-    pin:      "7001",
-    company:  "Starlight Inc",
-    projects: ["horizon"],
-  },
-  {
-    id:       "cl2",
-    name:     "Tom",
-    role:     "client",
-    initials: "YS",
-    email:    "tom@yellowsubmarine.com",
-    pin:      "7002",
-    company:  "Yellow Submarine",
-    projects: ["brand"],
-  },
-  {
-    id:       "cl3",
-    name:     "Priya",
-    role:     "client",
-    initials: "NL",
-    email:    "priya@nexuslabs.com",
-    pin:      "7003",
-    company:  "Nexus Labs",
-    projects: ["forge"],
-  },
-  {
-    id:       "cl4",
-    name:     "James",
-    role:     "client",
-    initials: "BC",
-    email:    "james@bloomco.com",
-    pin:      "7004",
-    company:  "Bloom Co",
-    projects: ["bloom"],
-  },
+  // ── Client accounts (dev persona only — Dr. Mehta/MUWCI is the one real
+  // client account; the other fictional demo clients that used to live here
+  // were removed along with their fictional projects, see pm_seed.js) ──
   {
     id:       "cl5",
     name:     "Dr. Mehta",
     role:     "client",
     initials: "MW",
     email:    "mehta@muwci.edu",
-    pin:      "7005",
     company:  "MUWCI",
     projects: ["muwci"],
   },

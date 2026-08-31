@@ -5,8 +5,13 @@ import {
 } from "recharts";
 import { INK, INK2, PAPER, SURFACE, PANEL, GRAY, GRAY2, MUTED, LINE,
          OK, OK_BG, WARN, WARN_BG, RISK, RISK_BG, HEALTH, COMPANIES, ff, mono } from "./brand/tokens.js";
-import { PROJECTS, TEAM_SEED, ATTENTION, WINS, WATCH, ACTIONS, MY_TASKS, TREND, CLIENT_REQUESTS } from "./data/seed.js";
-import { USERS, ROLE_LABEL } from "./data/users.js";
+import { TEAM_SEED, ATTENTION, WINS, WATCH, ACTIONS, MY_TASKS, TREND, CLIENT_REQUESTS } from "./data/seed.js";
+import { ROLE_LABEL } from "./data/users.js";
+import { useProjects, createProject, updateProject, useMyOrganizations, switchOrganization } from "./lib/queries.js";
+import { onAuthStateChange, getProfile, signOut } from "./lib/session.js";
+import { SUPABASE_CONFIGURED } from "./lib/supabaseClient.js";
+
+const EMPTY_PROJECTS = [];
 import { visibleProjects, visibleClients, visibleTasks, visibleInbox, visibleTeam, can, navFor, landingFor } from "./lib/access.js";
 import PepperAvatar, { moodFor } from "./components/PepperAvatar.jsx";
 import AtRiskView from "./components/AtRiskView.jsx";
@@ -18,6 +23,10 @@ import TeamMembersView from "./components/TeamMembersView.jsx";
 import CeoView from "./components/CeoView.jsx";
 import DesignHubView from "./components/DesignHubView.jsx";
 import ExecutiveView from "./components/ExecutiveView.jsx";
+import AccountsView from "./components/AccountsView.jsx";
+import PipelineView from "./components/PipelineView.jsx";
+import AskPepper from "./components/AskPepper.jsx";
+import ProjectBrief from "./components/ProjectBrief.jsx";
 import { getStats, BADGE_DEFS } from "./lib/gamification.js";
 
 /* ---- Pepper avatar image data ---- */
@@ -586,80 +595,41 @@ function TasksView({ user, myTasks, tasksDone, setTasksDone, allTasks, setAllTas
   );
 }
 
-/* ---- SwitchUserMenu — PIN-gated role switcher ---- */
-function SwitchUserMenu({ currentUser, onSwitch, onClose, addToast }) {
-  const [pending, setPending] = useState(null);  // user being unlocked
-  const [pin, setPin]         = useState("");
-  const [error, setError]     = useState("");
-
-  const trySwitch = (u) => {
-    if (u.id === currentUser.id) { onClose(); return; }
-    setPending(u); setPin(""); setError("");
-  };
-
-  const handlePinKey = (e) => {
-    if (e.key === "Enter") {
-      if (pin === pending.pin) { onSwitch(pending); }
-      else { setError("Wrong PIN"); setPin(""); }
-    }
-  };
-
+/* ---- WorkspaceSwitcher — switch which org's data you're viewing, plus
+   sign out. Replaces the old PIN-gated "switch to any user" menu, which
+   can't exist once every login is a real Supabase account: you can't
+   instantly become someone else without their password anymore, but a
+   signed-in person CAN switch between the orgs they're a real member of. ---- */
+function WorkspaceSwitcher({ currentUser, organizations, onSwitchOrg, onSignOut, onClose }) {
   return (
     <div style={{ position: "absolute", right: 0, top: "calc(100% + 8px)",
                   background: SURFACE, border: `1px solid ${LINE}`, borderRadius: 18,
                   boxShadow: "0 8px 32px rgba(40,39,36,.14)", zIndex: 100, minWidth: 240,
                   overflow: "hidden" }}>
-      {!pending ? (
-        USERS.map(u => (
-          <button key={u.id} onClick={() => trySwitch(u)} style={{
-            display: "flex", alignItems: "center", gap: 10, padding: "12px 16px",
-            width: "100%", border: "none", background: u.id === currentUser.id ? PANEL : SURFACE,
-            cursor: "pointer", fontFamily: ff, textAlign: "left", borderBottom: `1px solid ${PANEL}`,
-          }}>
-            <div style={{ width: 32, height: 32, borderRadius: "50%", background: INK, color: "#fff",
-                          fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              {u.initials}
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>{u.name}</div>
-              <div style={{ fontSize: 11, color: GRAY }}>{ROLE_LABEL[u.role]}</div>
-            </div>
-            {u.id === currentUser.id
-              ? <span style={{ fontSize: 13, color: OK }}>✓</span>
-              : <span style={{ fontSize: 13, color: GRAY, opacity: 0.6 }}>🔒</span>}
-          </button>
-        ))
-      ) : (
-        <div style={{ padding: "16px 18px" }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 10 }}>
-            Enter PIN for {pending.name}
-          </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            <input
-              autoFocus
-              type="password"
-              inputMode="numeric"
-              maxLength={4}
-              value={pin}
-              onChange={e => { setPin(e.target.value.replace(/\D/g,"")); setError(""); }}
-              onKeyDown={handlePinKey}
-              placeholder="4-digit PIN"
-              style={{ flex: 1, padding: "8px 12px", borderRadius: 10, border: `1.5px solid ${error ? RISK : LINE}`,
-                       fontSize: 14, fontFamily: mono, outline: "none", letterSpacing: 6 }}
-            />
-            <button onClick={() => { if (pin === pending.pin) onSwitch(pending); else { setError("Wrong PIN"); setPin(""); } }}
-                    style={{ padding: "8px 14px", borderRadius: 10, border: "none",
-                             background: INK, color: "#fff", fontSize: 13, fontWeight: 700,
-                             cursor: "pointer", fontFamily: ff }}>→</button>
-          </div>
-          {error && <div style={{ fontSize: 11.5, color: RISK, marginTop: 6, fontWeight: 600 }}>{error}</div>}
-          <button onClick={() => { setPending(null); setPin(""); setError(""); }}
-                  style={{ marginTop: 8, background: "transparent", border: "none",
-                           color: GRAY, fontSize: 12, cursor: "pointer", fontFamily: ff }}>
-            ← Back
-          </button>
-        </div>
+      <div style={{ padding: "12px 16px", borderBottom: `1px solid ${PANEL}` }}>
+        <div style={{ fontSize: 13.5, fontWeight: 700, color: INK }}>{currentUser.name}</div>
+        <div style={{ fontSize: 11, color: GRAY }}>{ROLE_LABEL[currentUser.role]} · {currentUser.email}</div>
+      </div>
+      {organizations.length > 1 && (
+        <>
+          <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, padding: "8px 16px 4px" }}>WORKSPACES</div>
+          {organizations.map(o => (
+            <button key={o.id} onClick={() => onSwitchOrg(o)} style={{
+              display: "flex", alignItems: "center", gap: 10, padding: "10px 16px",
+              width: "100%", border: "none", background: SURFACE,
+              cursor: "pointer", fontFamily: ff, textAlign: "left",
+            }}>
+              <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: INK }}>{o.name}</span>
+              {o.id === currentUser.currentOrgId && <span style={{ fontSize: 13, color: OK }}>✓</span>}
+            </button>
+          ))}
+        </>
       )}
+      <button onClick={() => { onClose(); onSignOut(); }} style={{
+        display: "block", width: "100%", padding: "12px 16px", border: "none",
+        borderTop: `1px solid ${PANEL}`, background: SURFACE, color: RISK,
+        fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: ff, textAlign: "left",
+      }}>Sign out</button>
     </div>
   );
 }
@@ -673,7 +643,27 @@ export default function Dashboard() {
 
   /* user / role */
   const [user, setUser]         = useState(null);   // null until unlocked via AccessGate
+  const [sessionChecked, setSessionChecked] = useState(!SUPABASE_CONFIGURED); // local mode has no session to restore
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [askOpen, setAskOpen] = useState(false);
+
+  /* restore a real Supabase session on load/refresh, instead of always
+     dropping back to AccessGate — session.js already had the pieces for
+     this (onAuthStateChange/getProfile), nothing previously called them */
+  useEffect(() => {
+    if (!SUPABASE_CONFIGURED) return;
+    const unsubscribe = onAuthStateChange(async (session) => {
+      if (session) {
+        const profile = await getProfile();
+        setUser(profile);
+        if (profile) setView(landingFor(profile));
+      } else {
+        setUser(null);
+      }
+      setSessionChecked(true);
+    });
+    return unsubscribe;
+  }, []);
 
   /* gamification — points/streak chip, refreshed periodically since it's localStorage-backed */
   const [showBadges, setShowBadges] = useState(false);
@@ -686,8 +676,9 @@ export default function Dashboard() {
     return () => clearInterval(iv);
   }, [user]);
 
-  /* view */
-  const [view, setView]         = useState(() => landingFor(USERS[0]));
+  /* view — placeholder until AccessGate.onUnlock or the session-restore
+     effect above sets the real landing view for whoever signs in */
+  const [view, setView]         = useState("inbox");
 
   /* mutable data */
   const [team, setTeam]         = useState(TEAM_SEED);
@@ -726,7 +717,7 @@ export default function Dashboard() {
       localStorage.setItem(LS_PROFILES, JSON.stringify([...existing, profile]));
     } catch {}
     // add to team workload
-    setTeam(t => [...t, { name: nmName.trim(), projects: nmProjects.map(id => PROJECTS.find(p => p.id === id)?.name || id), load: Number(nmLoad) || 0 }]);
+    setTeam(t => [...t, { name: nmName.trim(), projects: nmProjects.map(id => allProjects.find(p => p.id === id)?.name || id), load: Number(nmLoad) || 0 }]);
     addToast(`${nmName.trim()} added — profile live on login screen`);
     setAddMemberOpen(false);
     setNmName(""); setNmEmail(""); setNmRole("consultant"); setNmPin(""); setNmPin2(""); setNmProjects([]); setNmLoad(""); setNmErr("");
@@ -745,7 +736,6 @@ export default function Dashboard() {
   const [sendConfirm, setSendConfirm] = useState(false); // show confirm modal
 
   /* project card interactive state */
-  const [projEdits, setProjEdits] = useState({});       // { [id]: { progress, milestone, due, notes } }
   const [editingProj, setEditingProj] = useState(null); // project id being edited
   const [projTab, setProjTab]   = useState({});         // { [id]: "overview"|"tasks"|"comms"|"meetings" }
   const [projDraft, setProjDraft] = useState({});       // draft edits per project
@@ -797,45 +787,36 @@ export default function Dashboard() {
 
   /* new-project form state */
   const [addProjOpen,   setAddProjOpen]   = useState(false);
-  const [extraProjects, setExtraProjects] = useState([]);
   const [npName,     setNpName]     = useState("");
   const [npClient,   setNpClient]   = useState("");
   const [npHealth,   setNpHealth]   = useState("green");
   const [npDue,      setNpDue]      = useState("");
-  const [npInvoiced, setNpInvoiced] = useState("");
   const [npErr,      setNpErr]      = useState("");
 
-  const submitNewProject = () => {
+  /* live projects — real ClickUp-sourced data (Supabase, or localStorage
+     fallback when .env.local isn't configured yet) instead of seed.js */
+  const { data: projectsData, refetch: refetchProjects } = useProjects();
+
+  const submitNewProject = async () => {
     if (!npName.trim())   { setNpErr("Project name is required."); return; }
     if (!npClient.trim()) { setNpErr("Client name is required.");  return; }
-    const id = npName.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") + "-" + Date.now();
-    const proj = {
-      id,
-      name:        npName.trim(),
-      company:     "aot",
-      client:      npClient.trim(),
-      health:      npHealth,
-      progress:    0,
-      week:        0,
-      milestone:   "Kick-off",
-      due:         npDue ? new Date(npDue).toLocaleDateString("en-GB", { day:"numeric", month:"short" }) : "TBD",
-      total:       0,
-      done:        0,
-      overdue:     0,
-      invoiced:    Number(npInvoiced) || 0,
-      received:    0,
-      lastContact: 0,
-      isNew:       true,
-    };
-    setExtraProjects(prev => [...prev, proj]);
-    // also assign to current user if cto/cdo
-    addToast(`Project "${proj.name}" created`);
-    setNpName(""); setNpClient(""); setNpHealth("green"); setNpDue(""); setNpInvoiced(""); setNpErr(""); setAddProjOpen(false);
+    const { error } = await createProject({
+      name: npName.trim(), client: npClient.trim(), company: "aot", health: npHealth,
+      due: npDue || null,
+    });
+    if (error) { setNpErr("Could not create project — try again."); return; }
+    await refetchProjects();
+    addToast(`Project "${npName.trim()}" created`);
+    setNpName(""); setNpClient(""); setNpHealth("green"); setNpDue(""); setNpErr(""); setAddProjOpen(false);
   };
 
-  /* merge project overrides — includes dynamically added projects */
-  const allProjects = useMemo(() => [...PROJECTS, ...extraProjects], [extraProjects]);
-  const projData = useMemo(() => allProjects.map(p => ({ ...p, ...(projEdits[p.id] || {}) })), [allProjects, projEdits]);
+  /* single source of truth for the projects list — the two names below
+     used to diverge (allProjects = raw+extra, projData = +local edits);
+     now both just alias the live query result. Falls back to the stable
+     EMPTY_PROJECTS reference (not a fresh []) while still loading, so
+     downstream useMemo deps don't churn every render. */
+  const allProjects = projectsData ?? EMPTY_PROJECTS;
+  const projData = allProjects;
 
   /* mock external data per project */
   const EXT_DATA = useMemo(() => ({
@@ -1021,15 +1002,23 @@ export default function Dashboard() {
   /* toasts */
   const { toasts, addToast } = useToast();
 
-  /* switch user / role */
-  const switchUser = (u) => {
-    setUser(u);
-    setView(landingFor(u));
-    setExpanded(null);
-    setPExpanded(null);
-    setCompany("all");
+  /* workspaces the signed-in user belongs to, and which one is active */
+  const { data: myOrgs, refetch: refetchOrgs } = useMyOrganizations();
+  const organizations = myOrgs ?? [];
+
+  const switchOrg = async (org) => {
     setShowUserMenu(false);
-    addToast(`Viewing as ${u.name} · ${ROLE_LABEL[u.role]}`);
+    const { error } = await switchOrganization(org.id);
+    if (error) { addToast("Could not switch workspace — try again"); return; }
+    addToast(`Switched to ${org.name}`);
+    await refetchOrgs();
+    window.location.reload();   // simplest correct way to refetch every RLS-scoped query at once
+  };
+
+  const signOutUser = async () => {
+    setShowUserMenu(false);
+    await signOut();
+    setUser(null);
   };
 
   /* navigation */
@@ -1065,8 +1054,8 @@ export default function Dashboard() {
   const totalInv   = vis.reduce((s, p) => s + p.invoiced, 0);
 
   /* mood */
-  const anyRed     = PROJECTS.some(p => p.health === "red");
-  const anyOverdue = PROJECTS.some(p => p.overdue > 0);
+  const anyRed     = allProjects.some(p => p.health === "red");
+  const anyOverdue = allProjects.some(p => p.overdue > 0);
   const mood       = useMemo(() => moodFor({
     pendingCount: pendingInbox.length,
     allDone:      allTasksDone,
@@ -1101,6 +1090,8 @@ export default function Dashboard() {
     view === "ceo"            ? `Command Centre, ${heroName}` :
     view === "pulse"          ? `${greeting}, ${heroName || (user?.name || "")}` :
     view === "operations"        ? "Operations Command Center" :
+    view === "accounts"          ? "Accounts" :
+    view === "pipeline"          ? "Pipeline" :
     view === "business"          ? "Business Intelligence" :
     view === "team"              ? "Team Members" :
     view === "ceo-command"       ? "Command" :
@@ -1326,7 +1317,10 @@ export default function Dashboard() {
     );
   };
 
-  /* access gate */
+  /* access gate — wait for the session-restore check (real mode only)
+     before deciding whether to show AccessGate, so a signed-in user isn't
+     flashed the login screen on every refresh */
+  if (!sessionChecked) return null;
   if (!user) return <AccessGate onUnlock={(u) => { setUser(u); setView(landingFor(u)); }} />;
 
   return (
@@ -1415,6 +1409,16 @@ export default function Dashboard() {
             </div>
           )}
 
+          {/* ask pepper — needs a real LLM backend, so no local-mode fallback */}
+          {SUPABASE_CONFIGURED && (
+            <button onClick={() => setAskOpen(true)} title="Ask Pepper" style={{
+              display: "flex", alignItems: "center", gap: 6, padding: "6px 13px",
+              border: `1.5px solid ${LINE}`, borderRadius: 28, background: SURFACE, cursor: "pointer", fontFamily: ff,
+              fontSize: 12.5, fontWeight: 700, color: GRAY2,
+            }}>🌶 {!mobile && "Ask Pepper"}</button>
+          )}
+          {askOpen && <AskPepper organizationId={organizations[0]?.id} onClose={() => setAskOpen(false)} />}
+
           {/* role / user switcher */}
           <div style={{ position: "relative" }}>
             <button onClick={() => setShowUserMenu(m => !m)} style={{
@@ -1434,7 +1438,7 @@ export default function Dashboard() {
               )}
               <span style={{ fontSize: 10, color: GRAY, transform: showUserMenu ? "rotate(180deg)" : "none", transition: ".15s" }}>▾</span>
             </button>
-            {showUserMenu && <SwitchUserMenu currentUser={user} onSwitch={switchUser} onClose={() => setShowUserMenu(false)} addToast={addToast} />}
+            {showUserMenu && <WorkspaceSwitcher currentUser={user} organizations={organizations} onSwitchOrg={switchOrg} onSignOut={signOutUser} onClose={() => setShowUserMenu(false)} />}
           </div>
         </nav>
       </div>
@@ -1898,7 +1902,7 @@ export default function Dashboard() {
                       style={{ width: "100%", fontSize: 13, padding: "8px 12px", borderRadius: 10, border: `1.5px solid ${LINE}`, background: PANEL, color: INK, outline: "none", boxSizing: "border-box", fontFamily: ff }} />
                   </div>
                 </div>
-                <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "1fr 1fr", gap: 10, marginBottom: 14 }}>
                   <div>
                     <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 6 }}>HEALTH STATUS</div>
                     <div style={{ display: "flex", gap: 6 }}>
@@ -1913,11 +1917,6 @@ export default function Dashboard() {
                   <div>
                     <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 4 }}>TARGET DUE DATE</div>
                     <input type="date" value={npDue} onChange={e => setNpDue(e.target.value)}
-                      style={{ width: "100%", fontSize: 13, padding: "8px 12px", borderRadius: 10, border: `1.5px solid ${LINE}`, background: PANEL, color: INK, outline: "none", boxSizing: "border-box", fontFamily: ff }} />
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 4 }}>CONTRACT VALUE (₹)</div>
-                    <input type="number" value={npInvoiced} onChange={e => setNpInvoiced(e.target.value)} placeholder="0"
                       style={{ width: "100%", fontSize: 13, padding: "8px 12px", borderRadius: 10, border: `1.5px solid ${LINE}`, background: PANEL, color: INK, outline: "none", boxSizing: "border-box", fontFamily: ff }} />
                   </div>
                 </div>
@@ -2302,6 +2301,7 @@ export default function Dashboard() {
                           <span style={{ fontSize: 11, color: GRAY, fontFamily: mono }}>{pr.progress}% complete</span>
                           <span style={{ fontSize: 11, fontWeight: 700, fontFamily: mono, color: pr.week > 0 ? OK : pr.week < 0 ? RISK : GRAY }}>{pr.week > 0 ? `+${pr.week}` : pr.week < 0 ? `${pr.week}` : "—"}% this week</span>
                         </div>
+                        {SUPABASE_CONFIGURED && <ProjectBrief projectId={pr.id} />}
                       </div>
                       <button onClick={e => { e.stopPropagation(); setPExpanded(pr.id); setProjTab(s => ({ ...s, [pr.id]: "tasks" })); setProjPanel(p => ({ ...p, [pr.id]: "total" })); setAddTaskProj(pr.id); setAtLabel(""); setAtDue(""); setAtAssignee(""); setAtPriority("medium"); }}
                         style={{ fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: GRAY, cursor: "pointer", fontFamily: ff, flexShrink: 0, whiteSpace: "nowrap" }}>+ Task</button>
@@ -2323,7 +2323,7 @@ export default function Dashboard() {
                             }}>{t === "overview" ? "Overview" : t === "tasks" ? `Tasks (${ext.clickup?.open ?? pr.total - pr.done})` : t === "comms" ? "Comms" : "Meetings"}</button>
                           ))}
                           {isPM && (
-                            <button onClick={e => { e.stopPropagation(); if (isEditingThis) { setEditingProj(null); setProjDraft(d => { const n = {...d}; delete n[pr.id]; return n; }); } else { setEditingProj(pr.id); setProjDraft(d => ({ ...d, [pr.id]: { progress: pr.progress, milestone: pr.milestone, due: pr.due, notes: pr.notes || "" } })); } }} style={{
+                            <button onClick={e => { e.stopPropagation(); if (isEditingThis) { setEditingProj(null); setProjDraft(d => { const n = {...d}; delete n[pr.id]; return n; }); } else { setEditingProj(pr.id); setProjDraft(d => ({ ...d, [pr.id]: { milestone: pr.milestone, due: pr.due, notes: pr.notes || "" } })); } }} style={{
                               marginLeft: "auto", fontSize: 11, fontWeight: 700, padding: "5px 13px", borderRadius: 10,
                               border: `1.5px solid ${isEditingThis ? WARN : LINE}`,
                               background: isEditingThis ? WARN_BG : SURFACE,
@@ -2339,11 +2339,6 @@ export default function Dashboard() {
                             {isEditingThis && isPM ? (
                               <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "1fr 1fr", gap: 12, marginBottom: 16 }}>
                                 <div>
-                                  <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 4 }}>PROGRESS %</div>
-                                  <input type="number" min={0} max={100} value={draft.progress ?? pr.progress} onChange={e => setProjDraft(d => ({ ...d, [pr.id]: { ...d[pr.id], progress: Number(e.target.value) } }))}
-                                    style={{ width: "100%", fontSize: 15, fontWeight: 700, fontFamily: mono, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${OK}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box" }} />
-                                </div>
-                                <div>
                                   <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 4 }}>MILESTONE</div>
                                   <input value={draft.milestone ?? pr.milestone} onChange={e => setProjDraft(d => ({ ...d, [pr.id]: { ...d[pr.id], milestone: e.target.value } }))}
                                     style={{ width: "100%", fontSize: 13, fontFamily: ff, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box" }} />
@@ -2353,14 +2348,14 @@ export default function Dashboard() {
                                   <input value={draft.due ?? pr.due} onChange={e => setProjDraft(d => ({ ...d, [pr.id]: { ...d[pr.id], due: e.target.value } }))}
                                     style={{ width: "100%", fontSize: 13, fontFamily: mono, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box" }} />
                                 </div>
-                                <div>
+                                <div style={{ gridColumn: mobile ? "auto" : "1 / -1" }}>
                                   <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 4 }}>INTERNAL NOTES (PM only)</div>
                                   <input value={draft.notes ?? ""} onChange={e => setProjDraft(d => ({ ...d, [pr.id]: { ...d[pr.id], notes: e.target.value } }))}
                                     placeholder="e.g. Client is slow to respond…"
                                     style={{ width: "100%", fontSize: 13, fontFamily: ff, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box" }} />
                                 </div>
                                 <div style={{ gridColumn: mobile ? "auto" : "1 / -1", display: "flex", gap: 8 }}>
-                                  <button onClick={e => { e.stopPropagation(); setProjEdits(o => ({ ...o, [pr.id]: { ...o[pr.id], ...draft } })); setEditingProj(null); setProjDraft(d => { const n = {...d}; delete n[pr.id]; return n; }); addToast(`${pr.name} updated`); }} style={{ padding: "8px 20px", borderRadius: 18, border: "none", background: INK, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Save changes</button>
+                                  <button onClick={async e => { e.stopPropagation(); const { error } = await updateProject(pr.id, draft); if (!error) { await refetchProjects(); addToast(`${pr.name} updated`); } else addToast("Could not save — try again"); setEditingProj(null); setProjDraft(d => { const n = {...d}; delete n[pr.id]; return n; }); }} style={{ padding: "8px 20px", borderRadius: 18, border: "none", background: INK, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Save changes</button>
                                   <button onClick={e => { e.stopPropagation(); setEditingProj(null); setProjDraft(d => { const n = {...d}; delete n[pr.id]; return n; }); }} style={{ padding: "8px 20px", borderRadius: 18, border: `1.5px solid ${LINE}`, background: SURFACE, color: GRAY2, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>Discard</button>
                                 </div>
                               </div>
@@ -2405,18 +2400,7 @@ export default function Dashboard() {
                                         <div style={{ fontSize: 12, color: GRAY2 }}>From <b>{ext.outlook?.from || pr.client}</b> · {ext.outlook?.lastEmail || "unknown"}</div>
                                         {ext.outlook?.unread > 0 && <div style={{ fontSize: 11, fontWeight: 700, color: RISK, background: RISK_BG, display: "inline-block", padding: "2px 9px", borderRadius: 8, fontFamily: mono }}>{ext.outlook.unread} unread</div>}
                                       </div>
-                                      {isPM && (
-                                        <>
-                                          <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 6 }}>EDIT LAST CONTACT (days ago)</div>
-                                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                            <input type="number" min={0} defaultValue={pr.lastContact}
-                                              onChange={e => setProjDraft(d => ({ ...d, [pr.id]: { ...d[pr.id], lastContact: Number(e.target.value) } }))}
-                                              style={{ width: 90, fontSize: 14, fontFamily: mono, padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none" }} />
-                                            <button onClick={e => { e.stopPropagation(); setProjEdits(o => ({ ...o, [pr.id]: { ...o[pr.id], ...(projDraft[pr.id] || {}) } })); addToast("Last contact updated"); }}
-                                              style={{ padding: "6px 16px", borderRadius: 8, border: "none", background: INK, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Save</button>
-                                          </div>
-                                        </>
-                                      )}
+                                      {/* ⚠️ not yet wired to a real signal — no meetings/email sync (Stage 5) */}
                                     </div>
                                   );
 
@@ -2569,7 +2553,7 @@ export default function Dashboard() {
                                       </div>
                                     )}
                                     <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-                                      <button onClick={e => { e.stopPropagation(); if (projDraft[pr.id]?.notes !== undefined) { setProjEdits(o => ({ ...o, [pr.id]: { ...o[pr.id], notes: projDraft[pr.id].notes } })); } addToast("Report copied — notes saved"); setReportModal(null); setProjPanel(p => ({ ...p, [pr.id]: null })); }}
+                                      <button onClick={async e => { e.stopPropagation(); if (projDraft[pr.id]?.notes !== undefined) { await updateProject(pr.id, { notes: projDraft[pr.id].notes }); await refetchProjects(); } addToast("Report copied — notes saved"); setReportModal(null); setProjPanel(p => ({ ...p, [pr.id]: null })); }}
                                         style={{ flex: 1, padding: "9px 0", borderRadius: 12, border: "none", background: INK, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Copy report</button>
                                       <button onClick={e => { e.stopPropagation(); setReportModal(null); setProjPanel(p => ({ ...p, [pr.id]: null })); }}
                                         style={{ padding: "9px 18px", borderRadius: 12, border: `1.5px solid ${LINE}`, background: SURFACE, color: GRAY2, fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: ff }}>Close</button>
@@ -2855,7 +2839,7 @@ export default function Dashboard() {
                       <div>
                         <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 6 }}>ASSIGN TO PROJECTS</div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                          {PROJECTS.map(p => {
+                          {allProjects.map(p => {
                             const on = nmProjects.includes(p.id);
                             return (
                               <button key={p.id} onClick={() => setNmProjects(ps => on ? ps.filter(x => x !== p.id) : [...ps, p.id])}
@@ -3512,6 +3496,16 @@ export default function Dashboard() {
           <OperationsView addToast={addToast} mobile={mobile} tablet={tablet} user={user} />
         )}
 
+        {/* ================= CRM: ACCOUNTS ================= */}
+        {view === "accounts" && (
+          <AccountsView addToast={addToast} mobile={mobile} />
+        )}
+
+        {/* ================= CRM: PIPELINE ================= */}
+        {view === "pipeline" && (
+          <PipelineView addToast={addToast} mobile={mobile} />
+        )}
+
         {/* ================= PM BUSINESS ================= */}
         {view === "business" && (user?.role === "pm" || user?.role === "cto") && (
           <BusinessView addToast={addToast} mobile={mobile} tablet={tablet} />
@@ -3950,9 +3944,9 @@ export default function Dashboard() {
             {/* KPI strip */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8, marginBottom: 16 }}>
               {[
-                { l: "Total invoiced", v: fmt(PROJECTS.reduce((s,p) => s+p.invoiced,0)), c: INK },
-                { l: "Received",       v: fmt(PROJECTS.reduce((s,p) => s+p.received,0)), c: OK },
-                { l: "Outstanding",    v: fmt(PROJECTS.reduce((s,p) => s+(p.invoiced-p.received),0)), c: WARN },
+                { l: "Total invoiced", v: fmt(allProjects.reduce((s,p) => s+p.invoiced,0)), c: INK },
+                { l: "Received",       v: fmt(allProjects.reduce((s,p) => s+p.received,0)), c: OK },
+                { l: "Outstanding",    v: fmt(allProjects.reduce((s,p) => s+(p.invoiced-p.received),0)), c: WARN },
               ].map(s => (
                 <div key={s.l} style={{ background: SURFACE, border: `1.5px solid ${LINE}`, borderRadius: 14, padding: "14px 16px" }}>
                   <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 4 }}>{s.l}</div>
@@ -3965,7 +3959,7 @@ export default function Dashboard() {
               <div style={{ fontSize: 12, fontWeight: 700, color: GRAY, fontFamily: mono, marginBottom: 12 }}>COLLECTION BY PROJECT</div>
               <div style={{ height: 140 }}>
                 <ResponsiveContainer>
-                  <BarChart data={PROJECTS.filter(p => p.invoiced > 0)} margin={{ top: 4, right: 8, left: -22, bottom: 0 }}>
+                  <BarChart data={allProjects.filter(p => p.invoiced > 0)} margin={{ top: 4, right: 8, left: -22, bottom: 0 }}>
                     <XAxis dataKey="name" tick={{ fontSize: 10, fill: GRAY2, fontFamily: ff }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 10, fill: MUTED, fontFamily: mono }} axisLine={false} tickLine={false} width={34} tickFormatter={v => `₹${(v/1000).toFixed(0)}K`} />
                     <Tooltip formatter={(v) => [`₹${(v/1000).toFixed(0)}K`]} contentStyle={{ fontFamily: ff, fontSize: 12, borderRadius: 10, border: `1px solid ${LINE}` }} cursor={{ fill: PANEL }} />
@@ -3978,7 +3972,7 @@ export default function Dashboard() {
             {/* Per-project breakdown */}
             <Eyebrow>Project breakdown</Eyebrow>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
-              {PROJECTS.filter(p => p.invoiced > 0).map(p => {
+              {allProjects.filter(p => p.invoiced > 0).map(p => {
                 const pct = Math.round(p.received / p.invoiced * 100);
                 return (
                   <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 18px", background: SURFACE, border: `1.5px solid ${LINE}`, borderRadius: 14 }}>
@@ -4001,11 +3995,11 @@ export default function Dashboard() {
               })}
             </div>
             {/* Unpaid / pending */}
-            {PROJECTS.filter(p => p.invoiced > p.received).length > 0 && (
+            {allProjects.filter(p => p.invoiced > p.received).length > 0 && (
               <>
                 <Eyebrow>Outstanding payments</Eyebrow>
                 <div style={{ background: WARN_BG, border: `1.5px solid ${WARN}44`, borderRadius: 14, padding: "14px 18px" }}>
-                  {PROJECTS.filter(p => p.invoiced > p.received).map((p, i, arr) => (
+                  {allProjects.filter(p => p.invoiced > p.received).map((p, i, arr) => (
                     <div key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "9px 0", borderBottom: i < arr.length - 1 ? `1px solid ${WARN}22` : "none" }}>
                       <div>
                         <div style={{ fontSize: 13, fontWeight: 700, color: INK }}>{p.name}</div>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { INK, SURFACE, PANEL, GRAY, GRAY2, LINE, OK, OK_BG, RISK, RISK_BG, ff, mono } from "../brand/tokens.js";
-import { useProfiles, setProfileActive, inviteTeamMember } from "../lib/queries.js";
+import { useProfiles, setProfileActive, inviteTeamMember, useMyOrganizations } from "../lib/queries.js";
 import { SUPABASE_CONFIGURED } from "../lib/supabaseClient.js";
 import { USERS, ROLE_LABEL } from "../data/users.js";
 import {
@@ -52,6 +52,8 @@ export default function TeamMembersView({ addToast, mobile, user }) {
   const live = useProfiles(); // always called (rules of hooks) — a no-op when Supabase isn't configured
   const PROFILES = SUPABASE_CONFIGURED ? (live.data ?? []) : buildLocalProfiles();
   const refetch = SUPABASE_CONFIGURED ? live.refetch : () => setLocalTick((t) => t + 1);
+  const { data: myOrgs } = useMyOrganizations();
+  const currentOrgId = myOrgs?.[0]?.id ?? null;   // single-org today; a real switcher-aware id lands with the workspace UI
 
   const [showAdd, setShowAdd] = useState(false);
   const [name, setName]   = useState("");
@@ -59,7 +61,7 @@ export default function TeamMembersView({ addToast, mobile, user }) {
   const [role, setRole]   = useState("delivery");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [lastCreated, setLastCreated] = useState(null); // { email, password }
+  const [lastCreated, setLastCreated] = useState(null); // { email }
 
   const [editingSpacesFor, setEditingSpacesFor] = useState(null); // profile id
   const [spacesDraft, setSpacesDraft] = useState([]);
@@ -73,11 +75,11 @@ export default function TeamMembersView({ addToast, mobile, user }) {
     setSubmitting(true);
     setError("");
     if (SUPABASE_CONFIGURED) {
-      const { data, error: inviteErr } = await inviteTeamMember({ name: name.trim(), email: email.trim(), role });
+      const { error: inviteErr } = await inviteTeamMember({ name: name.trim(), email: email.trim(), role, organizationId: currentOrgId });
       setSubmitting(false);
-      if (inviteErr) { setError(inviteErr.message || "Could not create the account."); return; }
-      setLastCreated(data);
-      addToast(`✓ Added ${name.trim()} — share their temporary password securely`);
+      if (inviteErr) { setError(inviteErr.message || "Could not send the invite."); return; }
+      setLastCreated({ email: email.trim() });
+      addToast(`✓ Invited ${name.trim()} — they'll get an email to set their password`);
     } else {
       addLocalMember({ name: name.trim(), email: email.trim(), role });
       setSubmitting(false);
@@ -116,16 +118,16 @@ export default function TeamMembersView({ addToast, mobile, user }) {
         </div>
       )}
 
-      {/* ── one-time temp password banner ── */}
+      {/* ── invite-sent banner ── */}
       {lastCreated && (
         <div style={{ background: OK_BG, border: `1.5px solid ${OK}44`, borderRadius: 14,
                       padding: "14px 16px", marginBottom: 16, display: "flex", gap: 12,
                       alignItems: "flex-start", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 18 }}>🔑</span>
+          <span style={{ fontSize: 18 }}>✉️</span>
           <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: OK }}>Account created — copy this now, it won't be shown again</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: OK }}>Invite sent</div>
             <div style={{ fontSize: 12.5, color: INK, marginTop: 4, fontFamily: mono }}>
-              {lastCreated.email} · {lastCreated.password}
+              {lastCreated.email} — they'll get an email to set their password and join.
             </div>
           </div>
           <button onClick={() => setLastCreated(null)} style={{

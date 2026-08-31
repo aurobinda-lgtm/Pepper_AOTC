@@ -85,6 +85,8 @@ export function navFor(user) {
     return [
       { key: "pulse",        label: "Pulse",      icon: "◉" },
       { key: "operations",   label: "Operations", icon: "◫" },
+      { key: "accounts",     label: "Accounts",   icon: "🏢" },
+      { key: "pipeline",     label: "Pipeline",   icon: "◧" },
       { key: "business",     label: "Business",   icon: "$" },
       { key: "ceo-command",  label: "Command",    icon: "⌂" },
       { key: "design-hub",   label: "Design Hub", icon: "🎨" },
@@ -96,6 +98,8 @@ export function navFor(user) {
   if (user.role === "cto") {
     return [
       { key: "operations",   label: "Operations", icon: "◫" },
+      { key: "accounts",     label: "Accounts",   icon: "🏢" },
+      { key: "pipeline",     label: "Pipeline",   icon: "◧" },
       { key: "exec-command", label: "Executive",  icon: "🧭" },
       { key: "business",     label: "Business",   icon: "$" },
       { key: "team",         label: "Team",       icon: "◈" },
@@ -104,6 +108,8 @@ export function navFor(user) {
   if (user.role === "cdo") {
     return [
       { key: "operations", label: "Operations", icon: "◫" },
+      { key: "accounts",   label: "Accounts",   icon: "🏢" },
+      { key: "pipeline",   label: "Pipeline",   icon: "◧" },
       { key: "design-hub", label: "Design Hub", icon: "🎨" },
       { key: "team",       label: "Team",       icon: "◈" },
     ];

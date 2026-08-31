@@ -10,12 +10,19 @@
 // component needs to know or care which source is active.
 // ─────────────────────────────────────────────────────────────────────────
 import {
-  FEATURES, BUGS, CURRENT_SPRINT, RELEASES, BLOCKERS, RISKS, DECISIONS,
+  PROJECTS, ACCOUNTS, FEATURES, BUGS, CURRENT_SPRINT, RELEASES, BLOCKERS, RISKS, DECISIONS,
   BUG_TREND, TEAM_CAPACITY, HEALTH_MATRIX, CUSTOMER_METRICS, PRODUCT_USAGE,
   BUSINESS_METRICS, BUDGET,
 } from "../data/pm_seed.js";
 
 const KEY = "aotc_local_store";
+
+// The implicit single tenant when Supabase isn't configured — local mode has
+// exactly one org and nothing to isolate, so this is a fixed stand-in rather
+// than a real multi-org simulation (see the Phase 1 plan's "local-dev
+// fallback stays simple" note).
+export const LOCAL_ORG = { id: "local-org", slug: "local", name: "Local Dev", role: "pm" };
+export function getMyOrganizations() { return [LOCAL_ORG]; }
 
 const makeId = () => `local_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -38,6 +45,10 @@ function seed() {
     sprintItems.push({ id: makeId(), taskId: task.id, status: item.status, points: item.points, blocked: !!item.blocked, sortOrder: sprintItems.length });
   }
   return {
+    projects: PROJECTS.map((p) => ({ ...p })),
+    accounts: ACCOUNTS.map((a) => ({ ...a })),
+    contacts: [],
+    opportunities: [],
     tasks,
     sprint: { id: "local-sprint", name: CURRENT_SPRINT.name, startDate: CURRENT_SPRINT.startDate, endDate: CURRENT_SPRINT.endDate, velocity: CURRENT_SPRINT.velocity },
     sprintItems,
@@ -115,6 +126,107 @@ export function localDeleteTask(id) {
   const store = load();
   store.tasks = store.tasks.filter((t) => t.id !== id);
   save(store);
+}
+
+// ─── PROJECTS ───────────────────────────────────────────────────────────────
+// Portfolio metrics (progress/total/done/overdue) are rolled up live from the
+// tasks table rather than stored — a task's `project` field holds the display
+// name (see mapLocalTask), so the rollup matches on `t.project === p.name`.
+
+export function getProjects() {
+  const store = load();
+  return store.projects.map((p) => {
+    const rows = store.tasks.filter((t) => t.project === p.name);
+    const total = rows.length;
+    const done = rows.filter((t) => t.status === "completed" || t.status === "resolved").length;
+    const overdue = rows.filter((t) => t.status === "delayed").length;
+    return {
+      ...p,
+      milestone: p.milestone ?? "Not set", due: p.due ?? "TBD", notes: p.notes ?? "",
+      progress: total ? Math.round((done / total) * 100) : 0,
+      total, done, overdue,
+      invoiced: 0, received: 0,   // ⚠️ not wired yet — see src/lib/execData.js
+      week: 0, lastContact: 0,    // ⚠️ no real signal yet (no meetings sync)
+    };
+  });
+}
+export function localCreateProject({ name, client = null, company = "aot", health = "green", due = null, notes = null, accountId = null, opportunityId = null }) {
+  const store = load();
+  const id = `${name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}-${Date.now()}`;
+  const row = { id, name, client, company, health, milestone: null, due, notes, accountId, opportunityId };
+  store.projects.push(row);
+  save(store);
+  return row;
+}
+export function localUpdateProject(id, patch) {
+  const store = load();
+  store.projects = store.projects.map((p) => (p.id === id ? { ...p, ...patch } : p));
+  save(store);
+}
+
+// ─── CRM: ACCOUNTS / CONTACTS / OPPORTUNITIES ───────────────────────────────
+// The CRM→delivery bridge lives in localUpdateOpportunity: moving an
+// opportunity's stage to "won" creates a linked project via the same
+// localCreateProject used everywhere else, carrying the account forward
+// instead of losing that context at the handoff.
+
+export function getAccounts() { return load().accounts; }
+export function localCreateAccount({ name, domain = null, notes = null }) {
+  const store = load();
+  const row = { id: makeId(), name, domain, notes };
+  store.accounts.push(row);
+  save(store);
+  return row;
+}
+export function localUpdateAccount(id, patch) {
+  const store = load();
+  store.accounts = store.accounts.map((a) => (a.id === id ? { ...a, ...patch } : a));
+  save(store);
+}
+
+export function getContacts(accountId) {
+  const store = load();
+  return accountId ? store.contacts.filter((c) => c.accountId === accountId) : store.contacts;
+}
+export function localCreateContact({ accountId = null, name, email = null, phone = null, title = null, roleLabel = null }) {
+  const store = load();
+  const row = { id: makeId(), accountId, name, email, phone, title, roleLabel };
+  store.contacts.push(row);
+  save(store);
+  return row;
+}
+export function localUpdateContact(id, patch) {
+  const store = load();
+  store.contacts = store.contacts.map((c) => (c.id === id ? { ...c, ...patch } : c));
+  save(store);
+}
+
+export function getOpportunities() { return load().opportunities; }
+export function localCreateOpportunity({ name, accountId = null, primaryContactId = null, type = "new_client", stage = "lead", amount = null, owner = null, closeDate = null, notes = null }) {
+  const store = load();
+  const row = { id: makeId(), name, accountId, primaryContactId, type, stage, amount, owner, closeDate, notes, createdAt: new Date().toISOString() };
+  store.opportunities.push(row);
+  save(store);
+  return row;
+}
+export function localUpdateOpportunity(id, patch) {
+  const store = load();
+  const existing = store.opportunities.find((o) => o.id === id);
+  const wasOpen = existing && existing.stage !== "won" && existing.stage !== "lost";
+  store.opportunities = store.opportunities.map((o) => (o.id === id ? { ...o, ...patch } : o));
+  save(store);
+
+  let createdProject = null;
+  if (existing && wasOpen && patch.stage === "won") {
+    const account = store.accounts.find((a) => a.id === existing.accountId);
+    createdProject = localCreateProject({
+      name: existing.name,
+      client: account?.name ?? null,
+      accountId: existing.accountId,
+      opportunityId: id,
+    });
+  }
+  return { opportunity: store.opportunities.find((o) => o.id === id), createdProject };
 }
 
 // ─── SPRINT ─────────────────────────────────────────────────────────────────
