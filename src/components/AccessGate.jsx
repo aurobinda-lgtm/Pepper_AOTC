@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { USERS, ROLE_LABEL } from "../data/users.js";
 import { INK, ff, mono } from "../brand/tokens.js";
-import { signInWithPassword, getProfile } from "../lib/session.js";
+import { signInWithPassword, getProfile, isAllowedEmailDomain, signOut } from "../lib/session.js";
 import { SUPABASE_CONFIGURED } from "../lib/supabaseClient.js";
 
 export default function AccessGate({ onUnlock }) {
@@ -22,14 +22,20 @@ export default function AccessGate({ onUnlock }) {
     color: "#fff", fontSize: 14, fontFamily: ff, outline: "none",
   };
 
-  // ── Real mode: everyone (staff, CEO, clients) signs in with a real
-  // Supabase account — no PINs, no local user list. Which org(s) they see
-  // comes from organization_members once signed in, not from this form.
+  // ── Real mode: real Supabase accounts, no PINs, no local user list.
+  // Restricted to Art of Tech company email domains — see session.js's
+  // isAllowedEmailDomain. Which org(s) a signed-in user sees comes from
+  // organization_members, not from this form.
   const submitLogin = async (e) => {
     e.preventDefault();
     if (!email.trim() || !password) return;
     setUnlocking(true);
     setError("");
+    if (!isAllowedEmailDomain(email.trim())) {
+      setUnlocking(false);
+      setError("Only Art of Tech company accounts can sign in here.");
+      return;
+    }
     const { error: authErr } = await signInWithPassword(email.trim(), password);
     if (authErr) {
       setUnlocking(false);
@@ -39,6 +45,7 @@ export default function AccessGate({ onUnlock }) {
     const profile = await getProfile();
     if (!profile) {
       setUnlocking(false);
+      await signOut();
       setError("Signed in, but no profile found for this account — check with your PM.");
       return;
     }

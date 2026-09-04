@@ -27,6 +27,7 @@ import AccountsView from "./components/AccountsView.jsx";
 import PipelineView from "./components/PipelineView.jsx";
 import AskPepper from "./components/AskPepper.jsx";
 import ProjectBrief from "./components/ProjectBrief.jsx";
+import EmailDraftFields from "./components/EmailDraftFields.jsx";
 import { getStats, BADGE_DEFS } from "./lib/gamification.js";
 
 /* ---- Pepper avatar image data ---- */
@@ -1593,22 +1594,14 @@ export default function Dashboard() {
                         {emailDraft?.actionId === a.id && (
                           <div style={{ marginTop: 16, background: PANEL, border: `1.5px solid ${LINE}`, borderRadius: 14, padding: "16px 18px" }}>
                             <div style={{ fontSize: 10, fontWeight: 700, color: GRAY, textTransform: "uppercase", letterSpacing: 0.8, fontFamily: mono, marginBottom: 12 }}>AI-drafted email — review before sending</div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
-                              <div>
-                                <div style={{ fontSize: 11, color: GRAY, fontFamily: mono, marginBottom: 4 }}>TO</div>
-                                <input value={emailDraft.to} onChange={e => setEmailDraft(d => ({ ...d, to: e.target.value }))}
-                                  style={{ width: "100%", fontSize: 13, fontFamily: mono, padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box" }} />
-                              </div>
-                              <div>
-                                <div style={{ fontSize: 11, color: GRAY, fontFamily: mono, marginBottom: 4 }}>SUBJECT</div>
-                                <input value={emailDraft.subject} onChange={e => setEmailDraft(d => ({ ...d, subject: e.target.value }))}
-                                  style={{ width: "100%", fontSize: 13, fontFamily: mono, padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box" }} />
-                              </div>
-                              <div>
-                                <div style={{ fontSize: 11, color: GRAY, fontFamily: mono, marginBottom: 4 }}>BODY</div>
-                                <textarea value={emailDraft.body} onChange={e => setEmailDraft(d => ({ ...d, body: e.target.value }))} rows={10}
-                                  style={{ width: "100%", fontSize: 13, fontFamily: mono, lineHeight: 1.6, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", resize: "vertical", boxSizing: "border-box" }} />
-                              </div>
+                            <div style={{ marginBottom: 14 }}>
+                              <EmailDraftFields
+                                to={emailDraft.to} subject={emailDraft.subject} body={emailDraft.body}
+                                onChangeTo={(v) => setEmailDraft(d => ({ ...d, to: v }))}
+                                onChangeSubject={(v) => setEmailDraft(d => ({ ...d, subject: v }))}
+                                onChangeBody={(v) => setEmailDraft(d => ({ ...d, body: v }))}
+                                rows={10} valueFont={mono}
+                              />
                             </div>
                             <div style={{ display: "flex", gap: 8 }}>
                               <button onClick={() => setSendConfirm(true)} style={{
@@ -1686,22 +1679,14 @@ export default function Dashboard() {
                             {emailDraft?.actionId === `att-${i}` && (
                               <div style={{ background: PANEL, border: `1.5px solid ${LINE}`, borderRadius: 14, padding: "16px 18px" }}>
                                 <div style={{ fontSize: 10, fontWeight: 700, color: GRAY, textTransform: "uppercase", letterSpacing: 0.8, fontFamily: mono, marginBottom: 12 }}>AI-drafted email — review before sending</div>
-                                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
-                                  <div>
-                                    <div style={{ fontSize: 11, color: GRAY, fontFamily: mono, marginBottom: 4 }}>TO</div>
-                                    <input value={emailDraft.to} onChange={e => setEmailDraft(d => ({ ...d, to: e.target.value }))}
-                                      style={{ width: "100%", fontSize: 13, fontFamily: mono, padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box" }} />
-                                  </div>
-                                  <div>
-                                    <div style={{ fontSize: 11, color: GRAY, fontFamily: mono, marginBottom: 4 }}>SUBJECT</div>
-                                    <input value={emailDraft.subject} onChange={e => setEmailDraft(d => ({ ...d, subject: e.target.value }))}
-                                      style={{ width: "100%", fontSize: 13, fontFamily: mono, padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box" }} />
-                                  </div>
-                                  <div>
-                                    <div style={{ fontSize: 11, color: GRAY, fontFamily: mono, marginBottom: 4 }}>BODY</div>
-                                    <textarea value={emailDraft.body} onChange={e => setEmailDraft(d => ({ ...d, body: e.target.value }))} rows={10}
-                                      style={{ width: "100%", fontSize: 13, fontFamily: mono, lineHeight: 1.6, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", resize: "vertical", boxSizing: "border-box" }} />
-                                  </div>
+                                <div style={{ marginBottom: 14 }}>
+                                  <EmailDraftFields
+                                    to={emailDraft.to} subject={emailDraft.subject} body={emailDraft.body}
+                                    onChangeTo={(v) => setEmailDraft(d => ({ ...d, to: v }))}
+                                    onChangeSubject={(v) => setEmailDraft(d => ({ ...d, subject: v }))}
+                                    onChangeBody={(v) => setEmailDraft(d => ({ ...d, body: v }))}
+                                    rows={10} valueFont={mono}
+                                  />
                                 </div>
                                 <div style={{ display: "flex", gap: 8 }}>
                                   <button onClick={() => setSendConfirm(true)} style={{
@@ -2009,22 +1994,12 @@ export default function Dashboard() {
                           {isOpen && (
                             <div style={{ borderTop: `1px solid ${LINE}`, padding: "14px 16px", background: PANEL, animation: "toast-in .15s ease" }}>
                               <div style={{ fontSize: 11, fontWeight: 800, color: "#1D6FA3", fontFamily: mono, marginBottom: 10, letterSpacing: 0.5 }}>AI-GENERATED DRAFT</div>
-                              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                                <div style={{ flex: 1 }}>
-                                  <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 3 }}>TO</div>
-                                  <input value={aiDraftTo} onChange={e => setAiDraftTo(e.target.value)}
-                                    style={{ width: "100%", fontSize: 12, padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box", fontFamily: ff }} />
-                                </div>
-                              </div>
-                              <div style={{ marginBottom: 8 }}>
-                                <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 3 }}>SUBJECT</div>
-                                <input value={aiDraftSub} onChange={e => setAiDraftSub(e.target.value)}
-                                  style={{ width: "100%", fontSize: 12, padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box", fontFamily: ff }} />
-                              </div>
                               <div style={{ marginBottom: 12 }}>
-                                <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 3 }}>BODY</div>
-                                <textarea value={aiDraftBody} onChange={e => setAiDraftBody(e.target.value)} rows={8}
-                                  style={{ width: "100%", fontSize: 12, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box", fontFamily: ff, resize: "vertical", lineHeight: 1.6 }} />
+                                <EmailDraftFields
+                                  to={aiDraftTo} subject={aiDraftSub} body={aiDraftBody}
+                                  onChangeTo={setAiDraftTo} onChangeSubject={setAiDraftSub} onChangeBody={setAiDraftBody}
+                                  rows={8}
+                                />
                               </div>
                               <div style={{ display: "flex", gap: 8 }}>
                                 <button onClick={() => {
@@ -2488,22 +2463,14 @@ export default function Dashboard() {
                                 {projPanel[pr.id] === "checkin" && checkInDraft?.projectId === pr.id && (
                                   <div style={{ borderRadius: 14, border: `1.5px solid ${OK}55`, background: OK_BG, padding: "16px", marginBottom: 10 }}>
                                     <div style={{ fontSize: 12, fontWeight: 700, color: OK, fontFamily: mono, marginBottom: 10 }}>✉ CHECK-IN EMAIL · AI-drafted · review before sending</div>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
-                                      <div>
-                                        <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 3 }}>TO</div>
-                                        <input value={checkInDraft.to} onChange={e => setCheckInDraft(d => ({ ...d, to: e.target.value }))} onClick={e => e.stopPropagation()}
-                                          style={{ width: "100%", fontSize: 13, fontFamily: mono, padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box" }} />
-                                      </div>
-                                      <div>
-                                        <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 3 }}>SUBJECT</div>
-                                        <input value={checkInDraft.subject} onChange={e => setCheckInDraft(d => ({ ...d, subject: e.target.value }))} onClick={e => e.stopPropagation()}
-                                          style={{ width: "100%", fontSize: 13, fontFamily: mono, padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box" }} />
-                                      </div>
-                                      <div>
-                                        <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 3 }}>BODY</div>
-                                        <textarea value={checkInDraft.body} onChange={e => setCheckInDraft(d => ({ ...d, body: e.target.value }))} onClick={e => e.stopPropagation()} rows={7}
-                                          style={{ width: "100%", fontSize: 12, fontFamily: mono, lineHeight: 1.6, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", resize: "vertical", boxSizing: "border-box" }} />
-                                      </div>
+                                    <div style={{ marginBottom: 12 }}>
+                                      <EmailDraftFields
+                                        to={checkInDraft.to} subject={checkInDraft.subject} body={checkInDraft.body}
+                                        onChangeTo={(v) => setCheckInDraft(d => ({ ...d, to: v }))}
+                                        onChangeSubject={(v) => setCheckInDraft(d => ({ ...d, subject: v }))}
+                                        onChangeBody={(v) => setCheckInDraft(d => ({ ...d, body: v }))}
+                                        rows={7} valueFont={mono}
+                                      />
                                     </div>
                                     <div style={{ display: "flex", gap: 8 }}>
                                       <button onClick={e => { e.stopPropagation(); setSendConfirm(true); setEmailDraft({ actionId: "checkin-" + pr.id, to: checkInDraft.to, subject: checkInDraft.subject, body: checkInDraft.body }); }}
@@ -2694,19 +2661,14 @@ export default function Dashboard() {
                     <button onClick={() => setCheckInDraft(null)} style={{ fontSize: 16, background: "none", border: "none", color: GRAY, cursor: "pointer" }}>✕</button>
                   </div>
                   <div style={{ fontSize: 10, color: OK, fontWeight: 700, fontFamily: mono, marginBottom: 12, background: OK_BG, padding: "5px 10px", borderRadius: 8, display: "inline-block" }}>AI-drafted · review before sending</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 14 }}>
-                    <div>
-                      <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 4 }}>TO</div>
-                      <input value={checkInDraft.to} onChange={e => setCheckInDraft(d => ({ ...d, to: e.target.value }))} style={{ width: "100%", fontSize: 13, fontFamily: mono, padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: PANEL, color: INK, outline: "none", boxSizing: "border-box" }} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 4 }}>SUBJECT</div>
-                      <input value={checkInDraft.subject} onChange={e => setCheckInDraft(d => ({ ...d, subject: e.target.value }))} style={{ width: "100%", fontSize: 13, fontFamily: mono, padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: PANEL, color: INK, outline: "none", boxSizing: "border-box" }} />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 4 }}>BODY</div>
-                      <textarea value={checkInDraft.body} onChange={e => setCheckInDraft(d => ({ ...d, body: e.target.value }))} rows={8} style={{ width: "100%", fontSize: 12.5, fontFamily: mono, lineHeight: 1.6, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: PANEL, color: INK, outline: "none", resize: "vertical", boxSizing: "border-box" }} />
-                    </div>
+                  <div style={{ marginBottom: 14 }}>
+                    <EmailDraftFields
+                      to={checkInDraft.to} subject={checkInDraft.subject} body={checkInDraft.body}
+                      onChangeTo={(v) => setCheckInDraft(d => ({ ...d, to: v }))}
+                      onChangeSubject={(v) => setCheckInDraft(d => ({ ...d, subject: v }))}
+                      onChangeBody={(v) => setCheckInDraft(d => ({ ...d, body: v }))}
+                      rows={8} fieldBg={PANEL} valueFont={mono}
+                    />
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <button onClick={() => { setSendConfirm(true); setEmailDraft({ actionId: "checkin-" + checkInDraft.projectId, to: checkInDraft.to, subject: checkInDraft.subject, body: checkInDraft.body }); }} style={{ flex: 1, padding: "10px 0", borderRadius: 18, border: "none", background: OK, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer", fontFamily: ff }}>Send email</button>
@@ -3125,17 +3087,11 @@ export default function Dashboard() {
                                 ) : (
                                   <div style={{ background: SURFACE, border: `1.5px solid ${LINE}`, borderRadius: 12, padding: "14px 16px" }}>
                                     <div style={{ fontSize: 11, fontWeight: 700, color: GRAY, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.07em" }}>Draft email</div>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                        <span style={{ fontSize: 11, color: GRAY, width: 36, flexShrink: 0 }}>To</span>
-                                        <input value={aiDraftTo} onChange={e => setAiDraftTo(e.target.value)} style={{ flex: 1, border: `1px solid ${LINE}`, borderRadius: 8, padding: "5px 10px", fontSize: 12, fontFamily: ff, background: PANEL }} />
-                                      </div>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                        <span style={{ fontSize: 11, color: GRAY, width: 36, flexShrink: 0 }}>Subj</span>
-                                        <input value={aiDraftSub} onChange={e => setAiDraftSub(e.target.value)} style={{ flex: 1, border: `1px solid ${LINE}`, borderRadius: 8, padding: "5px 10px", fontSize: 12, fontFamily: ff, background: PANEL }} />
-                                      </div>
-                                      <textarea value={aiDraftBody} onChange={e => setAiDraftBody(e.target.value)} rows={6} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px", fontSize: 12, fontFamily: ff, background: PANEL, resize: "vertical" }} />
-                                    </div>
+                                    <EmailDraftFields
+                                      to={aiDraftTo} subject={aiDraftSub} body={aiDraftBody}
+                                      onChangeTo={setAiDraftTo} onChangeSubject={setAiDraftSub} onChangeBody={setAiDraftBody}
+                                      rows={6} fieldBg={PANEL}
+                                    />
                                     <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                                       {aiDraftSent.has(`ceo-pri-${i}`) ? (
                                         <span style={{ fontSize: 12, color: OK, fontWeight: 700 }}>✓ Sent</span>
@@ -3186,17 +3142,11 @@ export default function Dashboard() {
                                 {isDraft && (
                                   <div style={{ background: PANEL, border: `1.5px solid ${LINE}`, borderRadius: 12, padding: "14px 16px" }}>
                                     <div style={{ fontSize: 11, fontWeight: 700, color: GRAY, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.07em" }}>Draft email</div>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                        <span style={{ fontSize: 11, color: GRAY, width: 36, flexShrink: 0 }}>To</span>
-                                        <input value={aiDraftTo} onChange={e => setAiDraftTo(e.target.value)} style={{ flex: 1, border: `1px solid ${LINE}`, borderRadius: 8, padding: "5px 10px", fontSize: 12, fontFamily: ff, background: SURFACE }} />
-                                      </div>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                        <span style={{ fontSize: 11, color: GRAY, width: 36, flexShrink: 0 }}>Subj</span>
-                                        <input value={aiDraftSub} onChange={e => setAiDraftSub(e.target.value)} style={{ flex: 1, border: `1px solid ${LINE}`, borderRadius: 8, padding: "5px 10px", fontSize: 12, fontFamily: ff, background: SURFACE }} />
-                                      </div>
-                                      <textarea value={aiDraftBody} onChange={e => setAiDraftBody(e.target.value)} rows={6} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px", fontSize: 12, fontFamily: ff, background: SURFACE, resize: "vertical" }} />
-                                    </div>
+                                    <EmailDraftFields
+                                      to={aiDraftTo} subject={aiDraftSub} body={aiDraftBody}
+                                      onChangeTo={setAiDraftTo} onChangeSubject={setAiDraftSub} onChangeBody={setAiDraftBody}
+                                      rows={6}
+                                    />
                                     <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                                       {aiDraftSent.has(`ceo-risk-${i}`) ? (
                                         <span style={{ fontSize: 12, color: OK, fontWeight: 700 }}>✓ Sent</span>
@@ -3425,20 +3375,11 @@ export default function Dashboard() {
                                 ) : (
                                   <div style={{ background: SURFACE, border: `1.5px solid ${LINE}`, borderRadius: 12, padding: "14px 16px", marginTop: 4 }}>
                                     <div style={{ fontSize: 11, fontWeight: 700, color: GRAY, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.07em" }}>Draft email</div>
-                                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                        <span style={{ fontSize: 11, color: GRAY, width: 36, flexShrink: 0 }}>To</span>
-                                        <input value={aiDraftTo} onChange={e => setAiDraftTo(e.target.value)}
-                                          style={{ flex: 1, border: `1px solid ${LINE}`, borderRadius: 8, padding: "5px 10px", fontSize: 12, fontFamily: ff, background: PANEL }} />
-                                      </div>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                        <span style={{ fontSize: 11, color: GRAY, width: 36, flexShrink: 0 }}>Subj</span>
-                                        <input value={aiDraftSub} onChange={e => setAiDraftSub(e.target.value)}
-                                          style={{ flex: 1, border: `1px solid ${LINE}`, borderRadius: 8, padding: "5px 10px", fontSize: 12, fontFamily: ff, background: PANEL }} />
-                                      </div>
-                                      <textarea value={aiDraftBody} onChange={e => setAiDraftBody(e.target.value)} rows={6}
-                                        style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px", fontSize: 12, fontFamily: ff, background: PANEL, resize: "vertical" }} />
-                                    </div>
+                                    <EmailDraftFields
+                                      to={aiDraftTo} subject={aiDraftSub} body={aiDraftBody}
+                                      onChangeTo={setAiDraftTo} onChangeSubject={setAiDraftSub} onChangeBody={setAiDraftBody}
+                                      rows={6} fieldBg={PANEL}
+                                    />
                                     <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                                       {aiDraftSent.has(`watch-${i}`) ? (
                                         <span style={{ fontSize: 12, color: OK, fontWeight: 700 }}>✓ Sent</span>
@@ -4232,20 +4173,12 @@ outlookCtx + ffCtx +
                                 AI-GENERATED DRAFT
                                 {ol.thread && <span style={{ fontWeight: 400, color: GRAY, marginLeft: 8 }}>· Context: {ol.thread} + Fireflies {ff2.lastMeeting}</span>}
                               </div>
-                              <div style={{ marginBottom: 8 }}>
-                                <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 3 }}>TO</div>
-                                <input value={aiDraftTo} onChange={e => setAiDraftTo(e.target.value)}
-                                  style={{ width: "100%", fontSize: 12, padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box", fontFamily: ff }} />
-                              </div>
-                              <div style={{ marginBottom: 8 }}>
-                                <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 3 }}>SUBJECT</div>
-                                <input value={aiDraftSub} onChange={e => setAiDraftSub(e.target.value)}
-                                  style={{ width: "100%", fontSize: 12, padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box", fontFamily: ff }} />
-                              </div>
                               <div style={{ marginBottom: 12 }}>
-                                <div style={{ fontSize: 10, color: GRAY, fontFamily: mono, marginBottom: 3 }}>BODY</div>
-                                <textarea value={aiDraftBody} onChange={e => setAiDraftBody(e.target.value)} rows={9}
-                                  style={{ width: "100%", fontSize: 12, padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, background: SURFACE, color: INK, outline: "none", boxSizing: "border-box", fontFamily: ff, resize: "vertical", lineHeight: 1.6 }} />
+                                <EmailDraftFields
+                                  to={aiDraftTo} subject={aiDraftSub} body={aiDraftBody}
+                                  onChangeTo={setAiDraftTo} onChangeSubject={setAiDraftSub} onChangeBody={setAiDraftBody}
+                                  rows={9}
+                                />
                               </div>
                               <div style={{ fontSize: 10, color: MUTED, fontFamily: mono, marginBottom: 10 }}>
                                 ⚡ Draft generated from {ol.thread ? `Outlook ("${ol.thread}")` : "task context"}

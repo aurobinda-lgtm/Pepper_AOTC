@@ -2,6 +2,7 @@ import { useState } from "react";
 import { INK, SURFACE, PANEL, GRAY, GRAY2, LINE, OK, OK_BG, RISK, RISK_BG, ff, mono } from "../brand/tokens.js";
 import { useProfiles, setProfileActive, inviteTeamMember, useMyOrganizations } from "../lib/queries.js";
 import { SUPABASE_CONFIGURED } from "../lib/supabaseClient.js";
+import { isAllowedEmailDomain } from "../lib/session.js";
 import { USERS, ROLE_LABEL } from "../data/users.js";
 import {
   loadCustomMembers, addLocalMember,
@@ -72,6 +73,10 @@ export default function TeamMembersView({ addToast, mobile, user }) {
   const handleAdd = async (e) => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) { setError("Name and email are required."); return; }
+    if (SUPABASE_CONFIGURED && !isAllowedEmailDomain(email.trim())) {
+      setError("Only Art of Tech company email addresses can be invited.");
+      return;
+    }
     setSubmitting(true);
     setError("");
     if (SUPABASE_CONFIGURED) {
