@@ -18,4 +18,12 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  {
+    // Runs on Vercel's Edge Runtime, not in the browser — process.env is
+    // how it reads the GATE_USER/GATE_PASS env vars there.
+    files: ['middleware.js'],
+    languageOptions: {
+      globals: { process: 'readonly' },
+    },
+  },
 ])
