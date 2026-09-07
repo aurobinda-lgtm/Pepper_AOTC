@@ -45,9 +45,10 @@ function SpacesChips({ scopeProjects }) {
 
 export default function TeamMembersView({ addToast, mobile, user }) {
   const isPM = user?.role === "pm";
-  // Adding new accounts is restricted to the PM and the COO/operations head (Indranil, role "cto") —
-  // everyone else can still see the roster but not create new logins.
-  const canAddMembers = user?.role === "pm" || user?.role === "cto";
+  // Creating new accounts is PM-only — matches the organization_members_write
+  // RLS policy (0005 migration) and the invite-org-member Edge Function's
+  // own admin-role check, so this isn't just a UI-level restriction.
+  const canAddMembers = isPM;
   // eslint-disable-next-line no-unused-vars -- read only to force a re-render after a local-storage write
   const [localTick, setLocalTick] = useState(0);
   const live = useProfiles(); // always called (rules of hooks) — a no-op when Supabase isn't configured
@@ -60,15 +61,17 @@ export default function TeamMembersView({ addToast, mobile, user }) {
   const [name, setName]   = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole]   = useState("delivery");
+  const [tempPassword, setTempPassword] = useState("");
+  const [confirmTempPassword, setConfirmTempPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
-  const [lastCreated, setLastCreated] = useState(null); // { email }
+  const [lastCreated, setLastCreated] = useState(null); // { name, email }
 
   const [editingSpacesFor, setEditingSpacesFor] = useState(null); // profile id
   const [spacesDraft, setSpacesDraft] = useState([]);
   const [unrestrictedDraft, setUnrestrictedDraft] = useState(false);
 
-  const resetForm = () => { setName(""); setEmail(""); setRole("delivery"); setError(""); };
+  const resetForm = () => { setName(""); setEmail(""); setRole("delivery"); setTempPassword(""); setConfirmTempPassword(""); setError(""); };
 
   const handleAdd = async (e) => {
     e.preventDefault();
@@ -77,14 +80,18 @@ export default function TeamMembersView({ addToast, mobile, user }) {
       setError("Only Art of Tech company email addresses can be invited.");
       return;
     }
+    if (SUPABASE_CONFIGURED) {
+      if (tempPassword.length < 8) { setError("Temporary password must be at least 8 characters."); return; }
+      if (tempPassword !== confirmTempPassword) { setError("Temporary passwords don't match."); return; }
+    }
     setSubmitting(true);
     setError("");
     if (SUPABASE_CONFIGURED) {
-      const { error: inviteErr } = await inviteTeamMember({ name: name.trim(), email: email.trim(), role, organizationId: currentOrgId });
+      const { error: inviteErr } = await inviteTeamMember({ name: name.trim(), email: email.trim(), role, organizationId: currentOrgId, tempPassword });
       setSubmitting(false);
-      if (inviteErr) { setError(inviteErr.message || "Could not send the invite."); return; }
-      setLastCreated({ email: email.trim() });
-      addToast(`✓ Invited ${name.trim()} — they'll get an email to set their password`);
+      if (inviteErr) { setError(inviteErr.message || "Could not create the account."); return; }
+      setLastCreated({ name: name.trim(), email: email.trim() });
+      addToast(`✓ Created ${name.trim()}'s account — give them the temporary password directly`);
     } else {
       addLocalMember({ name: name.trim(), email: email.trim(), role });
       setSubmitting(false);
@@ -123,16 +130,18 @@ export default function TeamMembersView({ addToast, mobile, user }) {
         </div>
       )}
 
-      {/* ── invite-sent banner ── */}
+      {/* ── account-created banner ── */}
       {lastCreated && (
         <div style={{ background: OK_BG, border: `1.5px solid ${OK}44`, borderRadius: 14,
                       padding: "14px 16px", marginBottom: 16, display: "flex", gap: 12,
                       alignItems: "flex-start", flexWrap: "wrap" }}>
-          <span style={{ fontSize: 18 }}>✉️</span>
+          <span style={{ fontSize: 18 }}>🔑</span>
           <div style={{ flex: 1, minWidth: 220 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: OK }}>Invite sent</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: OK }}>Account created</div>
             <div style={{ fontSize: 12.5, color: INK, marginTop: 4, fontFamily: mono }}>
-              {lastCreated.email} — they'll get an email to set their password and join.
+              No email was sent — give {lastCreated.name} their email ({lastCreated.email}) and the temporary
+              password you just set, directly and securely. They'll be asked to set their own password
+              the first time they sign in with it.
             </div>
           </div>
           <button onClick={() => setLastCreated(null)} style={{
@@ -159,7 +168,7 @@ export default function TeamMembersView({ addToast, mobile, user }) {
         )}
       </div>
 
-      {/* ── add member form (PM + COO/operations head only) ── */}
+      {/* ── add member form (PM only) ── */}
       {canAddMembers && showAdd && (
         <form onSubmit={handleAdd} style={{ background: SURFACE, border: `1.5px solid ${INK}33`, borderRadius: 16,
                                              padding: "16px 18px", marginBottom: 20 }}>
@@ -179,6 +188,22 @@ export default function TeamMembersView({ addToast, mobile, user }) {
               </select>
             </div>
           </div>
+          {SUPABASE_CONFIGURED && (
+            <div style={{ display: "grid", gridTemplateColumns: mobile ? "1fr" : "1fr 1fr", gap: "12px 16px", marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: GRAY, textTransform: "uppercase", letterSpacing: 0.6, fontFamily: mono, marginBottom: 5 }}>Temporary password</div>
+                <input value={tempPassword} onChange={e => setTempPassword(e.target.value)} type="password" placeholder="At least 8 characters" style={inp} />
+              </div>
+              <div>
+                <div style={{ fontSize: 10, fontWeight: 700, color: GRAY, textTransform: "uppercase", letterSpacing: 0.6, fontFamily: mono, marginBottom: 5 }}>Confirm temporary password</div>
+                <input value={confirmTempPassword} onChange={e => setConfirmTempPassword(e.target.value)} type="password" placeholder="Repeat it" style={inp} />
+              </div>
+              <div style={{ gridColumn: mobile ? "auto" : "1 / -1", fontSize: 11.5, color: GRAY2, lineHeight: 1.5 }}>
+                No invite email is sent — you'll need to give this password to them yourself. They'll be
+                required to set their own password the first time they sign in with it.
+              </div>
+            </div>
+          )}
           {error && <div style={{ fontSize: 12, color: RISK, fontWeight: 600, marginBottom: 10 }}>{error}</div>}
           <button type="submit" disabled={submitting} style={{
             fontSize: 13, fontWeight: 700, padding: "9px 22px", borderRadius: 12, border: "none",

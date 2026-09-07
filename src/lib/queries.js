@@ -636,14 +636,16 @@ export async function setProfileActive(id, active) {
   return supabase.from("profiles").update({ active }).eq("id", id);
 }
 
-/** Invites someone into an org: creates a real Supabase Auth account (via
- *  Supabase's invite-email flow) if they don't have one yet, plus a profile
- *  + organization_members row. Requires the `invite-org-member` Edge
- *  Function (supabase/functions/invite-org-member) — admin user creation
- *  needs the service-role key, which must never reach the browser. */
-export async function inviteTeamMember({ name, email, role, organizationId }) {
+/** Creates a new team member: a real Supabase Auth account with the PM's
+ *  chosen temporary password (no invite email — the PM relays it directly),
+ *  plus a profile + organization_members row. The new member is required
+ *  to set their own password the first time they sign in (see
+ *  session.js's completePasswordReset / AccessGate.jsx). Requires the
+ *  `invite-org-member` Edge Function — admin user creation needs the
+ *  service-role key, which must never reach the browser. PM-only. */
+export async function inviteTeamMember({ name, email, role, organizationId, tempPassword }) {
   if (!supabase) return { error: { message: "Supabase not configured" } };
-  return supabase.functions.invoke("invite-org-member", { body: { name, email, role, organizationId } });
+  return supabase.functions.invoke("invite-org-member", { body: { name, email, role, organizationId, tempPassword } });
 }
 
 // ─── TASK-LEVEL FEATURES: comments, tags, checklist ────────────────────────

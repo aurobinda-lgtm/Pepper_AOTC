@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { USERS, ROLE_LABEL } from "../data/users.js";
 import { INK, ff, mono } from "../brand/tokens.js";
-import { signInWithPassword, getProfile, isAllowedEmailDomain, signOut } from "../lib/session.js";
+import { signInWithPassword, getProfile, isAllowedEmailDomain, signOut, completePasswordReset } from "../lib/session.js";
 import { SUPABASE_CONFIGURED } from "../lib/supabaseClient.js";
 
 export default function AccessGate({ onUnlock }) {
@@ -9,6 +9,27 @@ export default function AccessGate({ onUnlock }) {
   const [password,  setPassword]  = useState("");
   const [error,     setError]     = useState("");
   const [unlocking, setUnlocking] = useState(false);
+
+  // ── Forced first-login password reset — set when a profile signs in
+  // with a PM-issued temporary password (must_reset_password: true).
+  // Nothing else in the app is reachable until this is completed.
+  const [pendingReset, setPendingReset]   = useState(null); // profile object, or null
+  const [newPassword,  setNewPassword]    = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetError,   setResetError]     = useState("");
+  const [resetting,    setResetting]      = useState(false);
+
+  const submitPasswordReset = async (e) => {
+    e.preventDefault();
+    if (newPassword.length < 8) { setResetError("Password must be at least 8 characters."); return; }
+    if (newPassword !== confirmPassword) { setResetError("Passwords don't match."); return; }
+    setResetting(true);
+    setResetError("");
+    const { error: resetErr } = await completePasswordReset(newPassword);
+    setResetting(false);
+    if (resetErr) { setResetError(resetErr.message || "Could not set your password — try again."); return; }
+    onUnlock({ ...pendingReset, must_reset_password: false });
+  };
 
   const glass = {
     background: "rgba(255,255,255,.08)",
@@ -49,6 +70,11 @@ export default function AccessGate({ onUnlock }) {
       setError("Signed in, but no profile found for this account — check with your PM.");
       return;
     }
+    setUnlocking(false);
+    if (profile.must_reset_password) {
+      setPendingReset(profile);
+      return;
+    }
     onUnlock(profile);
   };
 
@@ -78,7 +104,38 @@ export default function AccessGate({ onUnlock }) {
           <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 10, fontFamily: mono, letterSpacing: 1 }}>WORKSPACE SIGN-IN</div>
         </div>
 
-        {SUPABASE_CONFIGURED ? (
+        {pendingReset ? (
+          <form onSubmit={submitPasswordReset} style={{ animation: "fadeUp .3s ease both" }}>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,.6)", textAlign: "center", marginBottom: 18, fontFamily: mono, lineHeight: 1.6 }}>
+              Welcome, {pendingReset.name?.split(" ")[0] || "there"} — set your own password to finish signing in.
+            </div>
+            <div style={{ padding: "18px 20px", borderRadius: 20, ...glass, marginBottom: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+              <input
+                autoFocus
+                type="password"
+                placeholder="New password"
+                value={newPassword}
+                disabled={resetting}
+                onChange={e => { setNewPassword(e.target.value); setResetError(""); }}
+                style={inputStyle}
+              />
+              <input
+                type="password"
+                placeholder="Confirm new password"
+                value={confirmPassword}
+                disabled={resetting}
+                onChange={e => { setConfirmPassword(e.target.value); setResetError(""); }}
+                style={inputStyle}
+              />
+            </div>
+            <div style={{ minHeight: 18, marginBottom: 10, fontSize: 12.5, color: "#F4A792", fontWeight: 600, textAlign: "center" }}>{resetError}</div>
+            <button type="submit" disabled={resetting || !newPassword || !confirmPassword} style={{
+              width: "100%", padding: "12px 0", borderRadius: 12, border: "none",
+              background: "rgba(30,158,114,.6)", color: "#fff", fontSize: 14, fontWeight: 700,
+              cursor: "pointer", fontFamily: ff, opacity: resetting || !newPassword || !confirmPassword ? 0.5 : 1,
+            }}>{resetting ? "Setting password…" : "Set password & continue"}</button>
+          </form>
+        ) : SUPABASE_CONFIGURED ? (
           <form onSubmit={submitLogin} style={{ animation: "fadeUp .3s ease both" }}>
             <div style={{ padding: "18px 20px", borderRadius: 20, ...glass, marginBottom: 16, display: "flex", flexDirection: "column", gap: 12 }}>
               <input

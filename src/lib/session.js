@@ -48,3 +48,18 @@ export async function getProfile() {
   if (error) return null;
   return data;
 }
+
+/** Sets a new password for the currently signed-in user and clears their
+ *  must_reset_password flag — the step a new member is required to
+ *  complete the first time they sign in with a PM-issued temporary
+ *  password (see invite-org-member). Row-level, so the existing
+ *  profiles_self_update policy already covers the profiles write — no new
+ *  RLS policy or Edge Function needed for this. */
+export async function completePasswordReset(newPassword) {
+  if (!supabase) return { error: { message: "Supabase is not configured yet." } };
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth?.user) return { error: { message: "Not signed in" } };
+  const { error: authErr } = await supabase.auth.updateUser({ password: newPassword });
+  if (authErr) return { error: authErr };
+  return supabase.from("profiles").update({ must_reset_password: false }).eq("id", auth.user.id);
+}

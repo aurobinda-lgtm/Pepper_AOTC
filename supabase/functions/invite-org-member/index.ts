@@ -1,21 +1,21 @@
-// Supabase Edge Function — invites someone into an organization: creates a
-// real auth account if they don't have one yet (via Supabase's built-in
-// invite-email flow, so they set their own password), upserts their
-// `profiles` row, and adds an `organization_members` row for the target org.
+// Supabase Edge Function — creates a new team member: a real auth account
+// with a PM-chosen temporary password (no invite email — the PM relays the
+// temp password to the new hire directly), a `profiles` row flagged
+// must_reset_password so they're required to set their own password the
+// first time they sign in with it, and an `organization_members` row for
+// the target org.
 //
-// Replaces create-team-member (single-org, generated-password model) now
-// that orgs/organization_members exist — see this repo's Phase 1 plan.
 // Runs server-side because admin.* needs the service-role key, which must
 // never reach the browser bundle.
 //
 // Deploy: supabase functions deploy invite-org-member
 // Called via supabase.functions.invoke("invite-org-member", { body: {...} })
-// The caller's JWT is checked below: only an existing active member with an
-// admin-ish role (owner/pm) *in that org* can invite into it.
+// The caller's JWT is checked below: creating a new member is PM-only,
+// matching the organization_members_write RLS policy (0005 migration).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-const ADMIN_ROLES = ["owner", "pm"];
+const ADMIN_ROLES = ["pm"];
 
 // Staff accounts are restricted to Art of Tech's own company domains — kept
 // in sync by hand with src/lib/session.js's ALLOWED_EMAIL_DOMAINS (Deno and
@@ -45,9 +45,12 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Not signed in" }), { status: 401 });
     }
 
-    const { name, email, role, organizationId } = await req.json();
-    if (!name || !email || !role || !organizationId) {
-      return new Response(JSON.stringify({ error: "name, email, role, and organizationId are required" }), { status: 400 });
+    const { name, email, role, organizationId, tempPassword } = await req.json();
+    if (!name || !email || !role || !organizationId || !tempPassword) {
+      return new Response(JSON.stringify({ error: "name, email, role, organizationId, and tempPassword are required" }), { status: 400 });
+    }
+    if (tempPassword.length < 8) {
+      return new Response(JSON.stringify({ error: "Temporary password must be at least 8 characters." }), { status: 400 });
     }
     if (!isAllowedEmailDomain(email)) {
       return new Response(JSON.stringify({ error: "Only Art of Tech company email addresses can be invited." }), { status: 400 });
@@ -66,16 +69,22 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: "Not authorized to invite into this workspace" }), { status: 403 });
     }
 
-    // find or create the auth user for this email
+    // find or create the auth user for this email. An existing profile (e.g.
+    // adding someone already on the team into a second org) is reused as-is —
+    // their password is theirs, we don't touch it. A genuinely new person
+    // gets a real account created directly with the PM's chosen temporary
+    // password (no invite email) and is flagged to set their own on first login.
     let userId;
     const { data: existing } = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
     if (existing) {
       userId = existing.id;
     } else {
-      const { data: invited, error: inviteErr } = await admin.auth.admin.inviteUserByEmail(email);
-      if (inviteErr) return new Response(JSON.stringify({ error: inviteErr.message }), { status: 400 });
-      userId = invited.user.id;
-      const { error: profileErr } = await admin.from("profiles").insert({ id: userId, name, email, role });
+      const { data: created, error: createErr } = await admin.auth.admin.createUser({
+        email, password: tempPassword, email_confirm: true,
+      });
+      if (createErr) return new Response(JSON.stringify({ error: createErr.message }), { status: 400 });
+      userId = created.user.id;
+      const { error: profileErr } = await admin.from("profiles").insert({ id: userId, name, email, role, must_reset_password: true });
       if (profileErr) return new Response(JSON.stringify({ error: profileErr.message }), { status: 400 });
     }
 
